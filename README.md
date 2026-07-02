@@ -89,6 +89,14 @@ pyproject.toml
 
 It is also intended to create source, artefact, output, log, and context version folders.
 
+By default, new ResearchBoss project workspaces are created under:
+
+```text
+workspaces/<project-name>
+```
+
+The repository tracks only `workspaces/.keep`; generated workspace contents are ignored.
+
 ## Development Setup
 
 Requires Python 3.11 or newer.
@@ -119,7 +127,7 @@ researchboss sources ignore <source-id> --reason "Reason" --workspace <path>
 During `researchboss init`, ResearchBoss looks for a default Zotero storage directory on macOS and Windows. If found, the source prompt defaults to that storage path, for example:
 
 ```text
-Where are your source files? [/Users/pedro/Zotero/storage]:
+Where are your source files? [/Users/<user>/Zotero/storage]:
 ```
 
 If Zotero storage is not found, the prompt falls back to:

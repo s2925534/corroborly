@@ -10,8 +10,9 @@ dist/
 build/
 *.egg-info/
 
-# Keep the sample ResearchBoss workspace directory skeleton only.
-/tedt/**
-!/tedt/
-!/tedt/**/
-!/tedt/**/.keep
+# Generated ResearchBoss workspaces.
+/workspaces/**
+!/workspaces/
+!/workspaces/.keep
+/tedt/
+/Container-Readiness-Framework-for-Port-Logistics--A-Deterministic-and-Explainable-Model-for-Operational-Eligibility/

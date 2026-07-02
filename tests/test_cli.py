@@ -32,6 +32,40 @@ def test_cli_init_and_config_validate(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
+def test_cli_init_defaults_workspace_under_workspaces_dir(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["init", "--quiet"],
+        input="Test Project\nM.Phil\nTest topic\nconfigure_later\n\ny\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    workspace = tmp_path / "workspaces" / "Test-Project"
+    assert (workspace / "research-context.yaml").is_file()
+    assert read_yaml(workspace / "research-context.yaml")["project"]["name"] == "Test Project"
+
+
+def test_cli_init_prints_concrete_scan_next_action(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    result = runner.invoke(
+        app,
+        ["init", str(workspace)],
+        input="Test Project\nM.Phil\nTest topic\nconfigure_later\n\ny\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "researchboss scan --workspace" in result.output
+    assert "scan --workspace <path>" not in result.output
+
+    summary_files = list((workspace / "outputs" / "logs" / "run-summaries").glob("*__init.yaml"))
+    assert len(summary_files) == 1
+    summary = read_yaml(summary_files[0])
+    assert summary["next_recommended_action"] == f"Run `researchboss scan --workspace {workspace}`"
+
+
 def test_cli_init_uses_detected_zotero_storage_default(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     zotero_storage = tmp_path / "Zotero" / "storage"

@@ -35,6 +35,7 @@ app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
 
 console = Console()
+DEFAULT_WORKSPACES_DIR = "workspaces"
 
 
 def _resolve_workspace(workspace: Optional[Path]) -> Path:
@@ -43,6 +44,14 @@ def _resolve_workspace(workspace: Optional[Path]) -> Path:
 
 def _command_slug(parts: list[str]) -> str:
     return "__".join(parts).replace("-", "_")
+
+
+def _workspace_slug(project_name: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in project_name).strip("-") or "workspace"
+
+
+def _default_workspace_path(project_name: str) -> Path:
+    return Path.cwd() / DEFAULT_WORKSPACES_DIR / _workspace_slug(project_name)
 
 
 def _run_ctx(command_parts: list[str], workspace: Path, log_level: str):
@@ -84,10 +93,7 @@ def init(
     artefact_root = typer.prompt("Destination / artefact root (optional)", default=str(default_documents_dir()))
     strict = typer.confirm("Enable strict evidence mode?", default=True)
 
-    workspace = path or (
-        Path.cwd()
-        / "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in project_name).strip("-")
-    )
+    workspace = path or _default_workspace_path(project_name)
 
     # init needs a workspace for logs; we log into the new workspace.
     workspace.mkdir(parents=True, exist_ok=True)
@@ -105,7 +111,7 @@ def init(
             artefact_root=artefact_root or None,
         )
         logger.info("Workspace created", operation="init", workspace=str(workspace))
-        _finish(summary, summary_path, next_action="Run `researchboss scan --workspace <path>`")
+        _finish(summary, summary_path, next_action=f"Run `researchboss scan --workspace {workspace}`")
     except Exception as e:
         logger.error("Init failed", operation="init", error=str(e))
         summary.errors += 1
@@ -114,7 +120,7 @@ def init(
 
     if not quiet:
         console.print(f"[green]Workspace created:[/green] {workspace}")
-        console.print("Next: run [bold]researchboss scan --workspace <path>[/bold]")
+        console.print(f"Next: run [bold]researchboss scan --workspace {workspace}[/bold]")
 
 
 @app.command()
