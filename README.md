@@ -100,6 +100,32 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
+## CLI Commands
+
+Phase 1 currently provides:
+
+```bash
+researchboss init
+researchboss status --workspace <path>
+researchboss config validate --workspace <path>
+researchboss scan --workspace <path> --source <source-folder>
+researchboss sources list --workspace <path>
+researchboss sources status --workspace <path>
+researchboss sources review --workspace <path>
+researchboss sources accept <source-id> --workspace <path>
+researchboss sources maybe <source-id> --workspace <path>
+researchboss sources ignore <source-id> --reason "Reason" --workspace <path>
+```
+
+Source statuses are currently limited to:
+
+- `pending_review`
+- `accepted`
+- `maybe`
+- `ignored`
+
+The source review commands only update local workspace YAML files. Later phases will use accepted sources for conversion, validation, research question support, and reports.
+
 ## Validation
 
 Run these checks before committing:
@@ -119,3 +145,7 @@ python -m pytest
 6. Add a local FastAPI backend.
 7. Prepare a cross-platform UI.
 8. Add packaging plans for desktop distribution.
+
+## Repository Hygiene
+
+Editor settings and local environments are intentionally ignored. `.idea/`, `.venv/`, `.env`, Python caches, pytest caches, and build outputs should stay out of source control.

@@ -5,6 +5,7 @@ import pytest
 from researchboss.core.yamlio import read_yaml
 from researchboss.engine.sources import (
     iter_source_files,
+    list_sources,
     scan_sources,
     set_source_status,
     source_counts,
@@ -96,3 +97,23 @@ def test_set_source_status_rejects_unknown_source_id(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unknown source_id"):
         set_source_status(workspace, source_id="missing", new_status="accepted")
+
+
+def test_list_sources_rejects_invalid_status_filter(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+
+    with pytest.raises(ValueError, match="Invalid source status"):
+        list_sources(workspace, status="done")
+
+
+def test_set_source_status_rejects_invalid_review_status(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("content", encoding="utf-8")
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+
+    with pytest.raises(ValueError, match="Invalid review status"):
+        set_source_status(workspace, source_id=source_id, new_status="done")

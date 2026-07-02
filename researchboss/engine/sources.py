@@ -10,6 +10,8 @@ from researchboss.core.yamlio import read_yaml, write_yaml
 
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".csv", ".sqlite", ".db"}
+SOURCE_STATUSES = {"pending_review", "accepted", "ignored", "maybe"}
+REVIEW_STATUSES = {"accepted", "ignored", "maybe"}
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,12 @@ def _make_source_id(file_path: Path, content_hash: str) -> str:
     stem = "".join(ch for ch in file_path.stem.lower() if ch.isalnum() or ch in ("-", "_"))
     stem = stem[:24] if stem else "source"
     return f"{stem}__{content_hash[:10]}"
+
+
+def validate_source_status(status: str) -> None:
+    if status not in SOURCE_STATUSES:
+        allowed = ", ".join(sorted(SOURCE_STATUSES))
+        raise ValueError(f"Invalid source status: {status!r}. Expected one of: {allowed}")
 
 
 def scan_sources(
@@ -116,6 +124,9 @@ def scan_sources(
 
 
 def list_sources(workspace: Path, *, status: Optional[str] = None) -> list[dict[str, Any]]:
+    if status is not None:
+        validate_source_status(status)
+
     reg = _load_register(workspace)
     sources: list[dict[str, Any]] = [s for s in reg.get("sources", []) if isinstance(s, dict)]
     if status:
@@ -130,6 +141,10 @@ def set_source_status(
     new_status: str,
     ignore_reason: Optional[str] = None,
 ) -> None:
+    if new_status not in REVIEW_STATUSES:
+        allowed = ", ".join(sorted(REVIEW_STATUSES))
+        raise ValueError(f"Invalid review status: {new_status!r}. Expected one of: {allowed}")
+
     reg = _load_register(workspace)
     sources: list[dict[str, Any]] = [s for s in reg.get("sources", []) if isinstance(s, dict)]
 

@@ -8,9 +8,9 @@ ResearchBoss is a local-first, evidence-first research workspace. The MVP must w
 
 ## Current Development Phase
 
-The project is in Phase 1: engine and CLI foundation.
+The project has completed the initial Phase 1 engine and CLI foundation. Future work should keep Phase 1 tests passing while adding later phases incrementally.
 
-Do not start FastAPI, UI, packaging, or OpenAI-heavy features until the Phase 1 engine and CLI tests are stable.
+Do not start FastAPI, UI, packaging, or OpenAI-heavy features until their engine contracts are tested.
 
 ## Priorities
 

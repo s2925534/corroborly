@@ -9,11 +9,11 @@
 - [x] Add tests for source scanning, hashing, duplicate detection, and allowed extensions.
 - [x] Add tests for source status transitions: accepted, ignored, and maybe.
 - [x] Add Typer CLI smoke tests for `init`, `status`, `config validate`, `scan`, and `sources` commands.
-- [ ] Validate source status values instead of accepting arbitrary strings.
+- [x] Validate source status values instead of accepting arbitrary strings.
 - [x] Add `AGENTS.md` with project instructions and development rules.
 - [x] Remove or replace the unused PyCharm sample `main.py`.
-- [ ] Decide whether `.idea/` should stay out of source control.
-- [ ] Expand README setup, testing, and architecture notes after the CLI is fixed.
+- [x] Decide whether `.idea/` should stay out of source control.
+- [x] Expand README setup, testing, and architecture notes after the CLI is fixed.
 
 ## Phase 2: Conversion and Metadata
 
