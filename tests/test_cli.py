@@ -30,6 +30,37 @@ def test_cli_doctor_command() -> None:
     assert "is ready" in result.output
 
 
+def test_cli_validate_writes_document_validation_report(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    target.write_text("Container terminal automation uses berth planning evidence.", encoding="utf-8")
+    source_text = workspace / "sources_text" / "source-001.txt"
+    source_text.write_text("Berth planning evidence supports container terminal automation.", encoding="utf-8")
+    write_yaml(
+        workspace / "source-register.yaml",
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "provider": "local_folder",
+                    "file_name": "paper.pdf",
+                    "conversion": {"status": "converted", "output_path": str(source_text)},
+                }
+            ],
+        },
+    )
+
+    result = runner.invoke(app, ["validate", str(target), "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    report = read_yaml(workspace / "outputs" / "validation" / "document-validation-draft.yaml")
+    assert report["validation_method"] == "deterministic_term_overlap"
+    assert report["summary"]["sources_with_overlap"] == 1
+
+
 def test_cli_ai_test_missing_key_does_not_print_secret(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)

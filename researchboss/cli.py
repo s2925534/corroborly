@@ -36,6 +36,7 @@ from researchboss.engine.claims import (
 )
 from researchboss.engine.conversion import convert_sources
 from researchboss.engine.data import data_source_counts, list_data_sources, profile_data_sources
+from researchboss.engine.doc_validation import validate_document
 from researchboss.engine.export import export_evidence_bundle
 from researchboss.engine.external_search import (
     ExternalSearchError,
@@ -627,6 +628,51 @@ def status(
     for k in sorted(counts.keys()):
         table.add_row(k, str(counts[k]))
     console.print(table)
+
+
+@app.command()
+def validate(
+    target: str = typer.Argument(..., help="Document target: path, artefact ID/title, alias, or artefact type."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path."),
+    source_path: list[Path] = typer.Option(
+        [],
+        "--source-path",
+        help="Additional source document path to compare against. Can be repeated.",
+    ),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Validate a document deterministically against accepted and explicitly supplied sources."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["validate"], ws, log_level)
+
+    try:
+        result = validate_document(ws, target, source_paths=source_path, cwd=Path.cwd())
+        logger.info(
+            "Document validation report written",
+            operation="validate",
+            target=target,
+            yaml_path=str(result.yaml_path),
+            markdown_path=str(result.markdown_path),
+        )
+        _finish(summary, summary_path, next_action=f"Review `{result.markdown_path}`")
+    except Exception as e:
+        logger.error("Document validation failed", operation="validate", target=target, error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path, next_action="Fix the target or source paths and rerun validation.")
+        raise
+
+    if quiet:
+        return
+
+    report_summary = result.report["summary"]
+    console.print(f"[green]Validation report:[/green] {result.markdown_path}")
+    console.print(f"YAML report: {result.yaml_path}")
+    console.print(
+        "Compared "
+        f"{report_summary['source_count']} sources; "
+        f"{report_summary['sources_with_overlap']} had deterministic term overlap."
+    )
 
 
 @config_app.command("validate")

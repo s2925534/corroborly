@@ -47,10 +47,8 @@ def _conversion_failure_path(workspace: Path, source_id: str) -> Path:
 
 
 def _convert_txt(source_path: Path, output_path: Path) -> None:
-    text = source_path.read_text(encoding="utf-8", errors="replace")
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(normalized, encoding="utf-8")
+    output_path.write_text(extract_text(source_path), encoding="utf-8")
 
 
 def _markdown_to_text(markdown: str) -> str:
@@ -68,12 +66,16 @@ def _markdown_to_text(markdown: str) -> str:
 
 
 def _convert_md(source_path: Path, output_path: Path) -> None:
-    text = source_path.read_text(encoding="utf-8", errors="replace")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(_markdown_to_text(text), encoding="utf-8")
+    output_path.write_text(extract_text(source_path), encoding="utf-8")
 
 
 def _convert_docx(source_path: Path, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(extract_text(source_path), encoding="utf-8")
+
+
+def _extract_docx_text(source_path: Path) -> str:
     with zipfile.ZipFile(source_path) as docx:
         xml_bytes = docx.read("word/document.xml")
     root = ElementTree.fromstring(xml_bytes)
@@ -86,8 +88,7 @@ def _convert_docx(source_path: Path, output_path: Path) -> None:
                 parts.append(text_node.text)
         if parts:
             paragraphs.append("".join(parts))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(paragraphs) + ("\n" if paragraphs else ""), encoding="utf-8")
+    return "\n".join(paragraphs) + ("\n" if paragraphs else "")
 
 
 def _decode_pdf_text_literal(value: str) -> str:
@@ -108,6 +109,11 @@ def _extract_pdf_stream_text(stream: str) -> str:
 
 
 def _convert_pdf(source_path: Path, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(extract_text(source_path), encoding="utf-8")
+
+
+def _extract_pdf_text(source_path: Path) -> str:
     raw = source_path.read_bytes().decode("latin-1", errors="ignore")
     streams = re.findall(r"stream\s*(.*?)\s*endstream", raw, flags=re.DOTALL)
     pages = []
@@ -119,8 +125,22 @@ def _convert_pdf(source_path: Path, output_path: Path) -> None:
     for index, page_text in enumerate(pages or [""], start=1):
         output_lines.append(f"--- Page {index} ---")
         output_lines.append(page_text)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
+    return "\n".join(output_lines) + "\n"
+
+
+def extract_text(source_path: Path) -> str:
+    extension = source_path.suffix.lower()
+    if extension == ".txt":
+        text = source_path.read_text(encoding="utf-8", errors="replace")
+        return text.replace("\r\n", "\n").replace("\r", "\n")
+    if extension == ".md":
+        text = source_path.read_text(encoding="utf-8", errors="replace")
+        return _markdown_to_text(text)
+    if extension == ".docx":
+        return _extract_docx_text(source_path)
+    if extension == ".pdf":
+        return _extract_pdf_text(source_path)
+    raise ValueError(f"Unsupported text extraction extension: {extension}")
 
 
 def convert_source_record(workspace: Path, source: dict[str, Any]) -> ConversionResult:
