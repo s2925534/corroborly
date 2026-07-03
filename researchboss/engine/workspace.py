@@ -10,6 +10,11 @@ from researchboss.core.yamlio import write_yaml
 
 PROJECT_TYPES = ["M.Phil", "PhD", "Other academic research", "Industry research", "Custom"]
 SOURCE_MODES = {"local_folder", "zotero_storage", "configure_later"}
+CITATION_STYLES = ["APA", "Harvard", "Chicago", "MLA", "IEEE", "Custom", "Not sure"]
+PRIMARY_OUTPUT_TYPES = ["thesis", "paper", "report", "presentation", "notes", "custom"]
+DATA_FILE_EXPECTATIONS = ["yes", "no", "not sure"]
+AI_PREFERENCES = ["no", "ask me later", "yes but disabled for now"]
+SOURCE_REVIEW_DEFAULTS = ["pending_review", "maybe"]
 
 
 def default_documents_dir(home: Optional[Path] = None) -> Path:
@@ -58,10 +63,11 @@ def infer_source_mode(source_answer: str, zotero_storage: Optional[Path] = None)
     return "local_folder"
 
 
-def _default_app_settings() -> dict[str, Any]:
+def _default_app_settings(ai_preference: str = "no") -> dict[str, Any]:
     return {
         "ai": {
             "enabled": False,
+            "setup_preference": ai_preference,
             "default_provider": "openai",
             "providers": {
                 "openai": {
@@ -95,6 +101,16 @@ def init_workspace(
     source_root: Optional[str] = None,
     source_mode: str = "configure_later",  # local_folder | zotero_storage | configure_later
     artefact_root: Optional[str] = None,
+    research_questions: Optional[list[dict[str, Any]]] = None,
+    supervisors: Optional[list[str]] = None,
+    citation_style: str = "Not sure",
+    custom_citation_style: Optional[str] = None,
+    primary_output_type: str = "notes",
+    custom_primary_output_type: Optional[str] = None,
+    expects_data_files: str = "not sure",
+    source_review_default: str = "pending_review",
+    prevent_full_document_uploads: bool = True,
+    ai_preference: str = "no",
 ) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
     ensure_workspace_dirs(workspace)
@@ -109,12 +125,24 @@ def init_workspace(
                 "type": project_type,
                 "topic": topic,
                 "strict_evidence_mode": strict_evidence_mode,
+                "supervisors_or_stakeholders": supervisors or [],
             },
-            "sources": {"mode": source_mode, "root": source_root},
-            "artefacts": {"root": artefact_root},
+            "sources": {
+                "mode": source_mode,
+                "root": source_root,
+                "new_source_status": source_review_default,
+                "requires_manual_review": source_review_default == "pending_review",
+            },
+            "artefacts": {
+                "root": artefact_root,
+                "primary_output_type": primary_output_type,
+                "custom_primary_output_type": custom_primary_output_type,
+            },
+            "citation": {"style": citation_style, "custom_style": custom_citation_style},
+            "data": {"expects_csv_or_sqlite": expects_data_files},
             "privacy": {
                 "local_first": True,
-                "do_not_upload_full_documents": True,
+                "do_not_upload_full_documents": prevent_full_document_uploads,
                 "no_external_search_mvp": True,
             },
         },
@@ -123,8 +151,28 @@ def init_workspace(
     write_yaml(workspace / WORKSPACE_FILES.research_state, {"version": 1, "current_stage": None, "last_scan_at": None})
     write_yaml(workspace / WORKSPACE_FILES.research_stages, {"version": 1, "stages": []})
 
-    write_yaml(workspace / WORKSPACE_FILES.research_questions, {"version": 1, "research_questions": []})
-    write_yaml(workspace / WORKSPACE_FILES.research_question_candidates, {"version": 1, "candidates": []})
+    approved_questions = []
+    draft_questions = []
+    for index, question in enumerate(research_questions or [], start=1):
+        record = {
+            "id": f"rq-{index:03d}",
+            "question": question["question"],
+            "subquestions": question.get("subquestions", []),
+        }
+        if question.get("status") == "approved":
+            approved_questions.append(record)
+        else:
+            record["status"] = "draft"
+            draft_questions.append(record)
+
+    write_yaml(
+        workspace / WORKSPACE_FILES.research_questions,
+        {"version": 1, "research_questions": approved_questions},
+    )
+    write_yaml(
+        workspace / WORKSPACE_FILES.research_question_candidates,
+        {"version": 1, "candidates": draft_questions},
+    )
     write_yaml(workspace / WORKSPACE_FILES.rejected_research_questions, {"version": 1, "rejected": []})
 
     write_yaml(workspace / WORKSPACE_FILES.source_register, {"version": 1, "sources": []})
@@ -142,7 +190,7 @@ def init_workspace(
     (workspace / WORKSPACE_FILES.memory_md).write_text("# Memory\n", encoding="utf-8")
     (workspace / WORKSPACE_FILES.context_changelog_md).write_text("# Context changelog\n", encoding="utf-8")
 
-    write_yaml(workspace / WORKSPACE_FILES.app_settings_local, _default_app_settings())
+    write_yaml(workspace / WORKSPACE_FILES.app_settings_local, _default_app_settings(ai_preference))
 
     (workspace / WORKSPACE_FILES.gitignore).write_text(
         "\n".join(

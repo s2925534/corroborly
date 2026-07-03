@@ -14,6 +14,12 @@
 - [x] Remove or replace the unused PyCharm sample `main.py`.
 - [x] Decide whether `.idea/` should stay out of source control.
 - [x] Expand README setup, testing, and architecture notes after the CLI is fixed.
+- [x] Add numbered init prompts with retry validation instead of raw Click errors.
+- [x] Capture optional research questions, draft status, and subquestions during init.
+- [x] Capture init setup context: stakeholders, citation style, output type, data expectations, source review default, AI preference, and privacy preference.
+- [x] Print concrete next-step commands after successful init.
+- [x] Resolve omitted `--workspace` interactively across workspace-aware commands.
+- [x] Auto-select a single discovered workspace and remember a default when several workspaces exist.
 
 ## Phase 2: Conversion and Metadata
 
@@ -39,7 +45,7 @@
 - [ ] Add research question templates for M.Phil, PhD, Other academic research, Industry research, and Custom.
 - [ ] Add M.Phil and PhD stage templates.
 - [ ] Add stage statuses.
-- [ ] Add research question candidate, approval, rejection, and archive workflows.
+- [ ] Add research question candidate, approval, rejection, and archive workflows beyond init-time capture.
 - [ ] Add warning thresholds without hard limits by default.
 - [ ] Add tests for research question and stage workflows.
 

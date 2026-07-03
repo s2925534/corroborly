@@ -5,6 +5,7 @@ from typer.testing import CliRunner
 import researchboss.cli as cli
 from researchboss.cli import app
 from researchboss.core.yamlio import read_yaml
+from researchboss.engine.workspace import init_workspace
 
 
 runner = CliRunner()
@@ -14,7 +15,7 @@ def init_workspace_with_cli(workspace: Path) -> None:
     result = runner.invoke(
         app,
         ["init", str(workspace), "--quiet"],
-        input="Test Project\nM.Phil\nTest topic\nconfigure_later\n\ny\n",
+        input="Test Project\n1\nTest topic\nn\nn\n\n\n\n\n\nconfigure_later\n\ny\ny\n",
     )
     assert result.exit_code == 0, result.output
 
@@ -38,7 +39,7 @@ def test_cli_init_defaults_workspace_under_workspaces_dir(tmp_path: Path, monkey
     result = runner.invoke(
         app,
         ["init", "--quiet"],
-        input="Test Project\nM.Phil\nTest topic\nconfigure_later\n\ny\n",
+        input="Test Project\n1\nTest topic\nn\nn\n\n\n\n\n\nconfigure_later\n\ny\ny\ny\n",
     )
 
     assert result.exit_code == 0, result.output
@@ -47,23 +48,77 @@ def test_cli_init_defaults_workspace_under_workspaces_dir(tmp_path: Path, monkey
     assert read_yaml(workspace / "research-context.yaml")["project"]["name"] == "Test Project"
 
 
+def test_cli_init_retries_invalid_numbered_choices(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    result = runner.invoke(
+        app,
+        ["init", str(workspace), "--quiet"],
+        input="Test Project\nabc\n9\n2\nTest topic\nn\nn\n\n\n\n\n\nconfigure_later\n\ny\ny\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Please enter a number from 1 to 5." in result.output
+    assert "Invalid value" not in result.output
+    assert read_yaml(workspace / "research-context.yaml")["project"]["type"] == "PhD"
+
+
 def test_cli_init_prints_concrete_scan_next_action(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
     result = runner.invoke(
         app,
         ["init", str(workspace)],
-        input="Test Project\nM.Phil\nTest topic\nconfigure_later\n\ny\n",
+        input="Test Project\n1\nTest topic\nn\nn\n\n\n\n\n\nconfigure_later\n\ny\ny\n",
     )
 
     assert result.exit_code == 0, result.output
+    output = result.output.replace("\n", "")
     assert "researchboss scan --workspace" in result.output
     assert "scan --workspace <path>" not in result.output
+    assert "Useful next commands" in result.output
+    assert f"researchboss config validate --workspace {workspace}" in output
+    assert f"researchboss scan --workspace {workspace} --source /path/to/your/sources" in output
+    assert f"researchboss sources review --workspace {workspace}" in output
+    assert f"researchboss sources status --workspace {workspace}" in output
+    assert f"researchboss sources list --workspace {workspace} --status accepted" in output
 
     summary_files = list((workspace / "outputs" / "logs" / "run-summaries").glob("*__init.yaml"))
     assert len(summary_files) == 1
     summary = read_yaml(summary_files[0])
     assert summary["next_recommended_action"] == f"Run `researchboss scan --workspace {workspace}`"
+
+
+def test_cli_init_next_commands_use_configured_source_path(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+
+    result = runner.invoke(
+        app,
+        ["init", str(workspace)],
+        input=(
+            "Test Project\n"
+            "1\n"
+            "Test topic\n"
+            "n\n"
+            "n\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            f"{source_root}\n"
+            "\n"
+            "y\n"
+            "y\n"
+        ),
+    )
+
+    assert result.exit_code == 0, result.output
+    output = result.output.replace("\n", "")
+    assert f"researchboss scan --workspace {workspace} --source {source_root}" in output
+    assert "/path/to/your/sources" not in result.output
 
 
 def test_cli_init_uses_detected_zotero_storage_default(tmp_path: Path, monkeypatch) -> None:
@@ -78,13 +133,109 @@ def test_cli_init_uses_detected_zotero_storage_default(tmp_path: Path, monkeypat
     result = runner.invoke(
         app,
         ["init", str(workspace), "--quiet"],
-        input="Test Project\nM.Phil\nTest topic\n\n\ny\n",
+        input="Test Project\n1\nTest topic\nn\nn\n\n\n\n\n\n\n\ny\ny\n",
     )
     assert result.exit_code == 0, result.output
 
     context = read_yaml(workspace / "research-context.yaml")
-    assert context["sources"] == {"mode": "zotero_storage", "root": str(zotero_storage)}
-    assert context["artefacts"] == {"root": str(documents)}
+    assert context["sources"]["mode"] == "zotero_storage"
+    assert context["sources"]["root"] == str(zotero_storage)
+    assert context["artefacts"]["root"] == str(documents)
+
+
+def test_cli_init_collects_draft_research_questions_with_subquestions(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    result = runner.invoke(
+        app,
+        ["init", str(workspace), "--quiet"],
+        input=(
+            "Test Project\n"
+            "2\n"
+            "Test topic\n"
+            "y\n"
+            "How does evidence tracking affect review quality?\n"
+            "1\n"
+            "y\n"
+            "What evidence is retained?\n"
+            "How are decisions recorded?\n"
+            "\n"
+            "n\n"
+            "n\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "configure_later\n"
+            "\n"
+            "y\n"
+            "y\n"
+        ),
+    )
+
+    assert result.exit_code == 0, result.output
+
+    context = read_yaml(workspace / "research-context.yaml")
+    assert context["project"]["type"] == "PhD"
+
+    questions = read_yaml(workspace / "research-questions.yaml")
+    candidates = read_yaml(workspace / "research-question-candidates.yaml")
+    assert questions["research_questions"] == []
+    assert candidates["candidates"] == [
+        {
+            "id": "rq-001",
+            "question": "How does evidence tracking affect review quality?",
+            "status": "draft",
+            "subquestions": ["What evidence is retained?", "How are decisions recorded?"],
+        }
+    ]
+
+
+def test_cli_init_collects_setup_preferences(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    result = runner.invoke(
+        app,
+        ["init", str(workspace), "--quiet"],
+        input=(
+            "Test Project\n"
+            "4\n"
+            "Test topic\n"
+            "n\n"
+            "y\n"
+            "Dr Smith\n"
+            "n\n"
+            "6\n"
+            "Vancouver-like custom style\n"
+            "6\n"
+            "policy brief\n"
+            "1\n"
+            "2\n"
+            "3\n"
+            "configure_later\n"
+            "\n"
+            "y\n"
+            "y\n"
+        ),
+    )
+
+    assert result.exit_code == 0, result.output
+
+    context = read_yaml(workspace / "research-context.yaml")
+    settings = read_yaml(workspace / "app-settings.local.yaml")
+
+    assert context["project"]["type"] == "Industry research"
+    assert context["project"]["supervisors_or_stakeholders"] == ["Dr Smith"]
+    assert context["citation"] == {"style": "Custom", "custom_style": "Vancouver-like custom style"}
+    assert context["artefacts"]["primary_output_type"] == "custom"
+    assert context["artefacts"]["custom_primary_output_type"] == "policy brief"
+    assert context["data"]["expects_csv_or_sqlite"] == "yes"
+    assert context["sources"]["new_source_status"] == "maybe"
+    assert context["sources"]["requires_manual_review"] is False
+    assert context["privacy"]["do_not_upload_full_documents"] is True
+    assert settings["ai"]["enabled"] is False
+    assert settings["ai"]["setup_preference"] == "yes but disabled for now"
 
 
 def test_cli_scan_list_status_and_source_transitions(tmp_path: Path) -> None:
@@ -125,3 +276,73 @@ def test_cli_scan_list_status_and_source_transitions(tmp_path: Path) -> None:
     assert read_yaml(workspace / "ignored-sources.yaml")["ignored"] == [
         {"source_id": source_id, "reason": "Out of scope"}
     ]
+
+
+def test_cli_commands_prompt_for_workspace_and_remember_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    source_root = tmp_path / "source-files"
+    source_root.mkdir()
+    (source_root / "paper.txt").write_text("content", encoding="utf-8")
+
+    first_workspace = tmp_path / "workspaces" / "First"
+    second_workspace = tmp_path / "workspaces" / "Second"
+    init_workspace(
+        first_workspace,
+        project_name="First",
+        project_type="M.Phil",
+        topic="",
+        source_root=str(source_root),
+        source_mode="local_folder",
+    )
+    init_workspace(
+        second_workspace,
+        project_name="Second",
+        project_type="PhD",
+        topic="",
+        source_root=str(source_root),
+        source_mode="local_folder",
+    )
+
+    scan_result = runner.invoke(app, ["scan", "--quiet"], input="2\ny\n")
+
+    assert scan_result.exit_code == 0, scan_result.output
+    assert "Select workspace" in scan_result.output
+    assert "Use this workspace as the default for future commands?" in scan_result.output
+    assert read_yaml(tmp_path / "workspaces" / ".researchboss-cli.local.yaml") == {
+        "version": 1,
+        "default_workspace": str(second_workspace),
+    }
+    assert len(read_yaml(second_workspace / "source-register.yaml")["sources"]) == 1
+    assert read_yaml(first_workspace / "source-register.yaml")["sources"] == []
+
+    status_result = runner.invoke(app, ["sources", "status", "--quiet"], input="\n")
+
+    assert status_result.exit_code == 0, status_result.output
+    assert "2. " in status_result.output
+    assert "(default)" in status_result.output
+
+
+def test_cli_commands_auto_select_single_discovered_workspace(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "workspaces" / "Only"
+    init_workspace(workspace, project_name="Only", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["sources", "status", "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert "Select workspace" not in result.output
+    assert "Use this workspace as the default for future commands?" not in result.output
+
+
+def test_cli_workspace_prompt_retries_invalid_selection(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    first_workspace = tmp_path / "workspaces" / "First"
+    second_workspace = tmp_path / "workspaces" / "Second"
+    init_workspace(first_workspace, project_name="First", project_type="M.Phil", topic="")
+    init_workspace(second_workspace, project_name="Second", project_type="PhD", topic="")
+
+    result = runner.invoke(app, ["sources", "status", "--quiet"], input="abc\n3\n1\nn\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Please enter a number from 1 to 2." in result.output
+    assert "Invalid value" not in result.output

@@ -67,6 +67,30 @@ def test_scan_sources_registers_new_files_and_skips_duplicates(tmp_path: Path) -
     assert second_result.duplicates == 2
 
 
+def test_scan_sources_can_start_new_files_as_maybe(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("content", encoding="utf-8")
+
+    result = scan_sources(workspace, source_root, initial_status="maybe")
+
+    assert result.added == 1
+    source = read_yaml(workspace / "source-register.yaml")["sources"][0]
+    assert source["status"] == "maybe"
+    assert read_yaml(workspace / "maybe-sources.yaml")["source_ids"] == [source["source_id"]]
+
+
+def test_scan_sources_rejects_invalid_initial_status(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+
+    with pytest.raises(ValueError, match="Invalid initial source status"):
+        scan_sources(workspace, source_root, initial_status="accepted")
+
+
 def test_set_source_status_updates_register_and_review_lists(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     source_root = tmp_path / "sources"

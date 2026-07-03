@@ -58,8 +58,21 @@ def test_init_workspace_creates_expected_files_and_dirs(tmp_path: Path) -> None:
     assert context["project"]["name"] == "Test Project"
     assert context["project"]["type"] == "M.Phil"
     assert context["project"]["strict_evidence_mode"] is True
-    assert context["sources"] == {"mode": "local_folder", "root": "/tmp/sources"}
+    assert context["sources"] == {
+        "mode": "local_folder",
+        "root": "/tmp/sources",
+        "new_source_status": "pending_review",
+        "requires_manual_review": True,
+    }
+    assert context["artefacts"] == {
+        "root": None,
+        "primary_output_type": "notes",
+        "custom_primary_output_type": None,
+    }
+    assert context["citation"] == {"style": "Not sure", "custom_style": None}
+    assert context["data"] == {"expects_csv_or_sqlite": "not sure"}
     assert context["privacy"]["local_first"] is True
+    assert context["privacy"]["do_not_upload_full_documents"] is True
     assert context["privacy"]["no_external_search_mvp"] is True
 
 
@@ -75,12 +88,87 @@ def test_default_app_settings_keep_ai_optional(tmp_path: Path) -> None:
     settings = read_yaml(workspace / WORKSPACE_FILES.app_settings_local)
 
     assert settings["ai"]["enabled"] is False
+    assert settings["ai"]["setup_preference"] == "no"
     assert settings["ai"]["providers"]["openai"]["api_key_env"] == "OPENAI_API_KEY"
     assert settings["ai"]["providers"]["anthropic"]["enabled"] is False
     assert settings["ai"]["providers"]["local"]["enabled"] is False
 
     gitignore = (workspace / WORKSPACE_FILES.gitignore).read_text(encoding="utf-8")
     assert ".env" in gitignore.splitlines()
+
+
+def test_init_workspace_writes_setup_preferences(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(
+        workspace,
+        project_name="Test Project",
+        project_type="Industry research",
+        topic="",
+        supervisors=["Dr Smith"],
+        citation_style="Custom",
+        custom_citation_style="Vancouver-like custom style",
+        primary_output_type="custom",
+        custom_primary_output_type="policy brief",
+        expects_data_files="yes",
+        source_review_default="maybe",
+        prevent_full_document_uploads=False,
+        ai_preference="ask me later",
+    )
+
+    context = read_yaml(workspace / WORKSPACE_FILES.research_context)
+    settings = read_yaml(workspace / WORKSPACE_FILES.app_settings_local)
+
+    assert context["project"]["supervisors_or_stakeholders"] == ["Dr Smith"]
+    assert context["citation"] == {"style": "Custom", "custom_style": "Vancouver-like custom style"}
+    assert context["artefacts"]["primary_output_type"] == "custom"
+    assert context["artefacts"]["custom_primary_output_type"] == "policy brief"
+    assert context["data"]["expects_csv_or_sqlite"] == "yes"
+    assert context["sources"]["new_source_status"] == "maybe"
+    assert context["sources"]["requires_manual_review"] is False
+    assert context["privacy"]["do_not_upload_full_documents"] is False
+    assert settings["ai"]["enabled"] is False
+    assert settings["ai"]["setup_preference"] == "ask me later"
+
+
+def test_init_workspace_writes_research_questions_and_candidates(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(
+        workspace,
+        project_name="Test Project",
+        project_type="PhD",
+        topic="",
+        research_questions=[
+            {
+                "question": "What makes local evidence tracking useful?",
+                "status": "approved",
+                "subquestions": ["Which files are tracked?"],
+            },
+            {
+                "question": "How should source review be staged?",
+                "status": "draft",
+                "subquestions": [],
+            },
+        ],
+    )
+
+    questions = read_yaml(workspace / WORKSPACE_FILES.research_questions)
+    candidates = read_yaml(workspace / WORKSPACE_FILES.research_question_candidates)
+
+    assert questions["research_questions"] == [
+        {
+            "id": "rq-001",
+            "question": "What makes local evidence tracking useful?",
+            "subquestions": ["Which files are tracked?"],
+        }
+    ]
+    assert candidates["candidates"] == [
+        {
+            "id": "rq-002",
+            "question": "How should source review be staged?",
+            "status": "draft",
+            "subquestions": [],
+        }
+    ]
 
 
 def test_default_documents_dir_uses_home_documents(tmp_path: Path) -> None:

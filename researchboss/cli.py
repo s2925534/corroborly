@@ -10,7 +10,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 from rich.table import Table
 
 from researchboss.core.runlog import JsonlLogger, RunSummary, make_run_paths, write_run_summary
-from researchboss.core.yamlio import read_yaml
+from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.sources import (
     ScanResult,
     iter_source_files,
@@ -20,7 +20,12 @@ from researchboss.engine.sources import (
     source_counts,
 )
 from researchboss.engine.workspace import (
+    AI_PREFERENCES,
+    CITATION_STYLES,
+    DATA_FILE_EXPECTATIONS,
+    PRIMARY_OUTPUT_TYPES,
     PROJECT_TYPES,
+    SOURCE_REVIEW_DEFAULTS,
     default_documents_dir,
     find_default_zotero_storage,
     infer_source_mode,
@@ -36,10 +41,109 @@ app.add_typer(config_app, name="config")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
+CLI_DEFAULTS_FILE = ".researchboss-cli.local.yaml"
 
 
 def _resolve_workspace(workspace: Optional[Path]) -> Path:
-    return workspace or Path.cwd()
+    if workspace is not None:
+        return workspace
+
+    candidates = _discover_workspaces(Path.cwd())
+    if not candidates:
+        console.print("[red]No ResearchBoss workspaces found.[/red]")
+        console.print("Pass --workspace, run from a workspace folder, or create one with `researchboss init`.")
+        raise typer.Exit(code=2)
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    return _prompt_workspace_selection(candidates)
+
+
+def _is_workspace(path: Path) -> bool:
+    return (path / "research-context.yaml").is_file() and (path / "source-register.yaml").is_file()
+
+
+def _workspace_search_root(cwd: Path) -> Path:
+    if (cwd / DEFAULT_WORKSPACES_DIR).is_dir():
+        return cwd
+    if cwd.parent.name == DEFAULT_WORKSPACES_DIR:
+        return cwd.parent.parent
+    return cwd
+
+
+def _cli_defaults_path(cwd: Path) -> Path:
+    root = _workspace_search_root(cwd)
+    workspaces_dir = root / DEFAULT_WORKSPACES_DIR
+    if workspaces_dir.exists():
+        return workspaces_dir / CLI_DEFAULTS_FILE
+    return root / CLI_DEFAULTS_FILE
+
+
+def _discover_workspaces(cwd: Path) -> list[Path]:
+    candidates: list[Path] = []
+    if _is_workspace(cwd):
+        candidates.append(cwd)
+
+    root = _workspace_search_root(cwd)
+    workspaces_dir = root / DEFAULT_WORKSPACES_DIR
+    if workspaces_dir.is_dir():
+        for child in sorted(workspaces_dir.iterdir()):
+            if child.is_dir() and _is_workspace(child):
+                candidates.append(child)
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved not in seen:
+            unique.append(candidate)
+            seen.add(resolved)
+    return unique
+
+
+def _read_default_workspace(cwd: Path, candidates: list[Path]) -> Optional[Path]:
+    defaults_path = _cli_defaults_path(cwd)
+    if not defaults_path.exists():
+        return None
+
+    data = read_yaml(defaults_path)
+    configured = data.get("default_workspace")
+    if not configured:
+        return None
+
+    configured_path = Path(configured).expanduser()
+    for candidate in candidates:
+        if candidate.resolve() == configured_path.resolve():
+            return candidate
+    return None
+
+
+def _write_default_workspace(cwd: Path, workspace: Path) -> None:
+    write_yaml(_cli_defaults_path(cwd), {"version": 1, "default_workspace": str(workspace)})
+
+
+def _prompt_workspace_selection(candidates: list[Path]) -> Path:
+    default_workspace = _read_default_workspace(Path.cwd(), candidates)
+    default_index = candidates.index(default_workspace) + 1 if default_workspace in candidates else 1
+
+    console.print("Select workspace")
+    for index, candidate in enumerate(candidates, start=1):
+        suffix = " (default)" if candidate == default_workspace else ""
+        console.print(f"{index}. {candidate}{suffix}")
+
+    valid_choices = {str(index) for index in range(1, len(candidates) + 1)}
+    while True:
+        selected = typer.prompt("Enter number", default=str(default_index)).strip()
+        if selected in valid_choices:
+            workspace = candidates[int(selected) - 1]
+            break
+        console.print(f"Please enter a number from 1 to {len(candidates)}.")
+
+    if default_workspace is None and typer.confirm("Use this workspace as the default for future commands?", default=True):
+        _write_default_workspace(Path.cwd(), workspace)
+
+    return workspace
 
 
 def _command_slug(parts: list[str]) -> str:
@@ -52,6 +156,112 @@ def _workspace_slug(project_name: str) -> str:
 
 def _default_workspace_path(project_name: str) -> Path:
     return Path.cwd() / DEFAULT_WORKSPACES_DIR / _workspace_slug(project_name)
+
+
+def _prompt_numbered_choice(title: str, choices: list[str], *, default_index: int = 1) -> str:
+    console.print(title)
+    for index, label in enumerate(choices, start=1):
+        console.print(f"{index}. {label}")
+    valid_choices = {str(index) for index in range(1, len(choices) + 1)}
+    while True:
+        selected = typer.prompt("Enter number", default=str(default_index)).strip()
+        if selected in valid_choices:
+            return choices[int(selected) - 1]
+        console.print(f"Please enter a number from 1 to {len(choices)}.")
+
+
+def _prompt_research_questions() -> list[dict[str, object]]:
+    console.print(
+        "Research questions are optional, but adding them now helps ResearchBoss keep useful context for later processing."
+    )
+    if not typer.confirm("Add research questions now?", default=False):
+        return []
+
+    questions: list[dict[str, object]] = []
+    while True:
+        question = typer.prompt("Research question", default="").strip()
+        if not question:
+            break
+
+        status = _prompt_numbered_choice("Research question status", ["Draft", "Approved"], default_index=1)
+        subquestions = []
+        if typer.confirm("Add optional subquestions for this research question?", default=False):
+            while True:
+                subquestion = typer.prompt("Subquestion (leave blank to finish)", default="").strip()
+                if not subquestion:
+                    break
+                subquestions.append(subquestion)
+
+        questions.append(
+            {
+                "question": question,
+                "status": "approved" if status == "Approved" else "draft",
+                "subquestions": subquestions,
+            }
+        )
+
+        if not typer.confirm("Add another research question?", default=False):
+            break
+
+    return questions
+
+
+def _prompt_optional_list(intro: str, item_prompt: str) -> list[str]:
+    if not typer.confirm(intro, default=False):
+        return []
+
+    items: list[str] = []
+    while True:
+        item = typer.prompt(item_prompt, default="").strip()
+        if not item:
+            break
+        items.append(item)
+        if not typer.confirm("Add another?", default=False):
+            break
+    return items
+
+
+def _prompt_setup_preferences() -> dict[str, object]:
+    supervisors = _prompt_optional_list(
+        "Record supervisor or stakeholder names for local context?",
+        "Supervisor or stakeholder name",
+    )
+    citation_style = _prompt_numbered_choice("Preferred citation style", CITATION_STYLES, default_index=7)
+    custom_citation_style = None
+    if citation_style == "Custom":
+        custom_citation_style = typer.prompt("Custom citation style", default="").strip() or None
+
+    primary_output_type = _prompt_numbered_choice("Primary output type", PRIMARY_OUTPUT_TYPES, default_index=1)
+    custom_primary_output_type = None
+    if primary_output_type == "custom":
+        custom_primary_output_type = typer.prompt("Custom primary output type", default="").strip() or None
+
+    expects_data_files = _prompt_numbered_choice(
+        "Will this project include CSV or SQLite data files?",
+        DATA_FILE_EXPECTATIONS,
+        default_index=3,
+    )
+    source_review_default = _prompt_numbered_choice(
+        "Default status for newly scanned sources",
+        SOURCE_REVIEW_DEFAULTS,
+        default_index=1,
+    )
+    ai_preference = _prompt_numbered_choice(
+        "Optional AI features preference (AI remains disabled during init)",
+        AI_PREFERENCES,
+        default_index=1,
+    )
+
+    return {
+        "supervisors": supervisors,
+        "citation_style": citation_style,
+        "custom_citation_style": custom_citation_style,
+        "primary_output_type": primary_output_type,
+        "custom_primary_output_type": custom_primary_output_type,
+        "expects_data_files": expects_data_files,
+        "source_review_default": source_review_default,
+        "ai_preference": ai_preference,
+    }
 
 
 def _run_ctx(command_parts: list[str], workspace: Path, log_level: str):
@@ -68,6 +278,29 @@ def _finish(summary: RunSummary, summary_path: Path, *, next_action: Optional[st
     write_run_summary(summary_path, summary)
 
 
+def _print_init_next_steps(workspace: Path, source_root: Optional[str]) -> None:
+    console.print(f"[green]Workspace created:[/green] {workspace}")
+    console.print("\n[bold]Useful next commands[/bold]")
+    console.print(f"Validate the workspace:\n  [bold]researchboss config validate --workspace {workspace}[/bold]")
+
+    if source_root:
+        console.print(
+            "Scan your configured sources:\n"
+            f"  [bold]researchboss scan --workspace {workspace} --source {source_root}[/bold]"
+        )
+    else:
+        console.print(
+            "Scan a source folder when you are ready:\n"
+            f"  [bold]researchboss scan --workspace {workspace} --source /path/to/your/sources[/bold]"
+        )
+
+    console.print(f"Review pending sources:\n  [bold]researchboss sources review --workspace {workspace}[/bold]")
+    console.print(f"Show source counts:\n  [bold]researchboss sources status --workspace {workspace}[/bold]")
+    console.print(
+        f"List accepted sources:\n  [bold]researchboss sources list --workspace {workspace} --status accepted[/bold]"
+    )
+
+
 @app.command()
 def init(
     path: Optional[Path] = typer.Argument(None, help="Workspace folder to create (default: ./<project-name>)"),
@@ -76,8 +309,10 @@ def init(
 ):
     """Create a new ResearchBoss workspace (bare minimum wizard)."""
     project_name = typer.prompt("Project name")
-    project_type = typer.prompt("Project type", type=click.Choice(PROJECT_TYPES), default=PROJECT_TYPES[0])
+    project_type = _prompt_numbered_choice("Research level / project type", PROJECT_TYPES)
     topic = typer.prompt("Research topic / short description", default="")
+    research_questions = _prompt_research_questions()
+    setup_preferences = _prompt_setup_preferences()
     default_zotero_storage = find_default_zotero_storage()
     source_answer = typer.prompt(
         "Where are your source files?",
@@ -92,8 +327,16 @@ def init(
 
     artefact_root = typer.prompt("Destination / artefact root (optional)", default=str(default_documents_dir()))
     strict = typer.confirm("Enable strict evidence mode?", default=True)
+    prevent_uploads = typer.confirm(
+        "Prevent workflows that upload full documents or datasets?",
+        default=True,
+    )
 
     workspace = path or _default_workspace_path(project_name)
+    if path is None:
+        console.print(f"Workspace will be created at: {workspace}")
+        if not typer.confirm("Continue with this workspace path?", default=True):
+            raise typer.Abort()
 
     # init needs a workspace for logs; we log into the new workspace.
     workspace.mkdir(parents=True, exist_ok=True)
@@ -109,6 +352,9 @@ def init(
             source_root=source_root or None,
             source_mode=source_mode,
             artefact_root=artefact_root or None,
+            research_questions=research_questions,
+            prevent_full_document_uploads=prevent_uploads,
+            **setup_preferences,
         )
         logger.info("Workspace created", operation="init", workspace=str(workspace))
         _finish(summary, summary_path, next_action=f"Run `researchboss scan --workspace {workspace}`")
@@ -119,8 +365,7 @@ def init(
         raise
 
     if not quiet:
-        console.print(f"[green]Workspace created:[/green] {workspace}")
-        console.print(f"Next: run [bold]researchboss scan --workspace {workspace}[/bold]")
+        _print_init_next_steps(workspace, source_root)
 
 
 @app.command()
@@ -204,7 +449,9 @@ def scan(
     _slug, logger, summary, summary_path, _log_path = _run_ctx(["scan"], ws, log_level)
 
     ctx = read_yaml(ws / "research-context.yaml")
-    cfg_root = (ctx.get("sources") or {}).get("root")
+    source_config = ctx.get("sources") or {}
+    cfg_root = source_config.get("root")
+    initial_status = source_config.get("new_source_status", "pending_review")
     scan_root = source or (Path(cfg_root) if cfg_root else None)
     if not scan_root:
         logger.error("No source root configured or provided", operation="scan")
@@ -242,7 +489,14 @@ def scan(
         for _ in candidates:
             progress.advance(task_id, 1)
 
-        result: ScanResult = scan_sources(ws, scan_root, provider=kind, logger=logger, file_paths=candidates)
+        result: ScanResult = scan_sources(
+            ws,
+            scan_root,
+            provider=kind,
+            logger=logger,
+            file_paths=candidates,
+            initial_status=initial_status,
+        )
 
     summary.files_processed = result.processed
     summary.files_succeeded = result.added

@@ -12,6 +12,7 @@ from researchboss.core.yamlio import read_yaml, write_yaml
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".csv", ".sqlite", ".db"}
 SOURCE_STATUSES = {"pending_review", "accepted", "ignored", "maybe"}
 REVIEW_STATUSES = {"accepted", "ignored", "maybe"}
+INITIAL_SOURCE_STATUSES = {"pending_review", "maybe"}
 
 
 @dataclass(frozen=True)
@@ -73,10 +74,17 @@ def scan_sources(
     provider: str = "local_folder",  # local_folder | zotero_storage
     logger: Optional[Any] = None,
     file_paths: Optional[list[Path]] = None,
+    initial_status: str = "pending_review",
 ) -> ScanResult:
+    if initial_status not in INITIAL_SOURCE_STATUSES:
+        allowed = ", ".join(sorted(INITIAL_SOURCE_STATUSES))
+        raise ValueError(f"Invalid initial source status: {initial_status!r}. Expected one of: {allowed}")
+
     reg = _load_register(workspace)
     reg.setdefault("version", 1)
     reg.setdefault("sources", [])
+    maybe = read_yaml(workspace / "maybe-sources.yaml")
+    maybe.setdefault("source_ids", [])
 
     seen_hashes = _existing_hashes(reg)
 
@@ -108,11 +116,13 @@ def scan_sources(
             "file_name": p.name,
             "file_ext": p.suffix.lower().lstrip("."),
             "content_hash": content_hash,
-            "status": "pending_review",
+            "status": initial_status,
             "discovered_at": None,  # fill later with timestamps in Phase 2+ if desired
             "notes": None,
         }
         reg["sources"].append(record)
+        if initial_status == "maybe":
+            maybe["source_ids"].append(source_id)
         seen_hashes.add(content_hash)
         added += 1
 
@@ -120,6 +130,8 @@ def scan_sources(
             logger.info("Discovered new source (pending_review)", source_id=source_id, file_path=str(p))
 
     _write_register(workspace, reg)
+    if initial_status == "maybe":
+        write_yaml(workspace / "maybe-sources.yaml", maybe)
     return ScanResult(processed=processed, added=added, duplicates=duplicates, skipped=skipped)
 
 
