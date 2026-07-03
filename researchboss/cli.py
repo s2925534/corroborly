@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +21,7 @@ from researchboss.engine.sources import (
     set_source_status,
     source_counts,
 )
+from researchboss import __version__
 from researchboss.engine.workspace import (
     AI_PREFERENCES,
     CITATION_STYLES,
@@ -42,6 +45,38 @@ app.add_typer(config_app, name="config")
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
 CLI_DEFAULTS_FILE = ".researchboss-cli.local.yaml"
+MIN_PYTHON = (3, 11)
+REQUIRED_RUNTIME_MODULES = ["click", "typer", "rich", "pydantic", "yaml"]
+
+
+def _runtime_check_errors() -> list[str]:
+    errors: list[str] = []
+    if sys.version_info < MIN_PYTHON:
+        errors.append(
+            "Python 3.11 or newer is required "
+            f"(running {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})."
+        )
+
+    for module_name in REQUIRED_RUNTIME_MODULES:
+        try:
+            importlib.import_module(module_name)
+        except ImportError:
+            errors.append(f"Missing required Python package: {module_name}")
+
+    return errors
+
+
+def _ensure_runtime_ready() -> None:
+    errors = _runtime_check_errors()
+    if not errors:
+        return
+
+    console.print("[red]ResearchBoss is not ready to run.[/red]")
+    for error in errors:
+        console.print(f"- {error}")
+    console.print("\nInstall the project before running commands:")
+    console.print('  [bold]python -m pip install -e ".[dev]"[/bold]')
+    raise typer.Exit(code=2)
 
 
 def _resolve_workspace(workspace: Optional[Path]) -> Path:
@@ -302,12 +337,33 @@ def _print_init_next_steps(workspace: Path, source_root: Optional[str]) -> None:
 
 
 @app.command()
+def version():
+    """Show the installed ResearchBoss version."""
+    console.print(f"ResearchBoss {__version__}")
+
+
+@app.command()
+def doctor():
+    """Check that ResearchBoss runtime requirements are available."""
+    errors = _runtime_check_errors()
+    if errors:
+        console.print("[red]ResearchBoss runtime check failed.[/red]")
+        for error in errors:
+            console.print(f"- {error}")
+        console.print('\nRun [bold]python -m pip install -e ".[dev]"[/bold] and try again.')
+        raise typer.Exit(code=2)
+
+    console.print(f"[green]OK[/green] ResearchBoss {__version__} is ready.")
+
+
+@app.command()
 def init(
     path: Optional[Path] = typer.Argument(None, help="Workspace folder to create (default: ./<project-name>)"),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
 ):
     """Create a new ResearchBoss workspace (bare minimum wizard)."""
+    _ensure_runtime_ready()
     project_name = typer.prompt("Project name")
     project_type = _prompt_numbered_choice("Research level / project type", PROJECT_TYPES)
     topic = typer.prompt("Research topic / short description", default="")

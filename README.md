@@ -2,7 +2,7 @@
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
-The project is currently in Phase 1. The core engine and CLI foundation are importable, tested, and usable for local workspace setup, local source scanning, and source review.
+Phase 1 engine and CLI foundation are complete. The core engine and CLI are importable, tested, and usable for local workspace setup, local source scanning, and source review.
 
 ## Author
 
@@ -20,10 +20,12 @@ Email: pedro@veloso.dev
 
 ## Current Status
 
-Implemented or started:
+Phase 1 complete:
 
 - Python package structure under `researchboss/`
 - Typer CLI command definitions
+- Runtime preflight checks through `researchboss doctor` and before `researchboss init`
+- Version output through `researchboss version`
 - Workspace creation engine
 - Default YAML and Markdown workspace files
 - Source folder constants
@@ -129,11 +131,35 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
+## Quick Start
+
+Install the project before running the first ResearchBoss command:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+researchboss doctor
+researchboss init
+```
+
+After `researchboss init`, follow the concrete commands printed by the CLI. A typical first workflow is:
+
+```bash
+researchboss scan
+researchboss sources review
+researchboss sources status
+```
+
+`researchboss init` runs a runtime preflight before asking setup questions. If required runtime libraries are missing or the Python version is unsupported, it stops and prints the install command before proceeding.
+
 ## CLI Commands
 
 Phase 1 currently provides:
 
 ```bash
+researchboss version
+researchboss doctor
 researchboss init
 researchboss status [--workspace <path>]
 researchboss config validate [--workspace <path>]
@@ -200,7 +226,7 @@ python -m pytest
 
 ## Roadmap
 
-1. Finish Phase 1 engine and CLI foundation.
+1. Phase 1 engine and CLI foundation complete.
 2. Add conversion and citation metadata extraction.
 3. Add CSV and SQLite profiling plus artefact metadata.
 4. Add research question templates, stages, and approval workflows.

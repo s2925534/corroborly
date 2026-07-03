@@ -50,6 +50,7 @@ The CLI should stay thin so a future FastAPI backend can use the same engine log
 CLI-only responsibilities include:
 
 - interactive init questions and numbered menu validation
+- runtime readiness checks before init and through `researchboss doctor`
 - workspace discovery when `--workspace` is omitted
 - local default workspace selection stored in `workspaces/.researchboss-cli.local.yaml`
 - user-facing next-step command examples

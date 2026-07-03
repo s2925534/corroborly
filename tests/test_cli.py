@@ -1,14 +1,45 @@
+import subprocess
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 import researchboss.cli as cli
+from researchboss import __version__
 from researchboss.cli import app
 from researchboss.core.yamlio import read_yaml
 from researchboss.engine.workspace import init_workspace
 
 
 runner = CliRunner()
+
+
+def test_cli_version_command() -> None:
+    result = runner.invoke(app, ["version"])
+
+    assert result.exit_code == 0, result.output
+    assert f"ResearchBoss {__version__}" in result.output
+
+
+def test_cli_doctor_command() -> None:
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0, result.output
+    assert "ResearchBoss" in result.output
+    assert "is ready" in result.output
+
+
+def test_python_module_entrypoint_help() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "researchboss", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ResearchBoss" in result.stdout
+    assert "init" in result.stdout
 
 
 def init_workspace_with_cli(workspace: Path) -> None:

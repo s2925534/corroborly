@@ -20,6 +20,10 @@
 - [x] Print concrete next-step commands after successful init.
 - [x] Resolve omitted `--workspace` interactively across workspace-aware commands.
 - [x] Auto-select a single discovered workspace and remember a default when several workspaces exist.
+- [x] Add `researchboss version`.
+- [x] Add `researchboss doctor` runtime checks and run the same preflight before `researchboss init`.
+- [x] Add coverage for `python -m researchboss`.
+- [x] Mark Phase 1 complete in README roadmap and add a Quick Start.
 
 ## Phase 2: Conversion and Metadata
 
