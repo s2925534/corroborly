@@ -22,6 +22,7 @@ from researchboss.engine.data import data_source_counts, list_data_sources, prof
 from researchboss.engine.metadata import extract_citation_metadata
 from researchboss.engine.migrations import migrate_workspace
 from researchboss.engine.research_questions import (
+    check_research_question_readiness,
     approve_research_question,
     archive_research_question,
     list_research_questions,
@@ -915,6 +916,33 @@ def rqs_approve(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Approved[/green] {rq_id}")
+
+
+@rqs_app.command("check")
+def rqs_check(
+    rq_id: Optional[str] = typer.Argument(None, help="Optional research question ID to check."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Run deterministic readiness checks for research questions."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["rqs", "check"], ws, log_level)
+    report = check_research_question_readiness(ws, rq_id=rq_id)
+    logger.info("Checked research question readiness", operation="rqs_check", checked_count=report["checked_count"])
+    _finish(summary, summary_path, next_action="Review findings before approving or using research questions.")
+    if quiet:
+        return
+
+    table = Table(title="Research question readiness")
+    table.add_column("id")
+    table.add_column("group")
+    table.add_column("status")
+    table.add_column("score", justify="right")
+    for row in report["research_questions"]:
+        readiness = row["readiness"]
+        table.add_row(str(row.get("id")), str(row.get("group")), str(readiness["status"]), str(readiness["score"]))
+    console.print(table)
 
 
 @rqs_app.command("reject")

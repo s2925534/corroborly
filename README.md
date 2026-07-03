@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.3.3
+Current version: 0.3.5
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -41,7 +41,7 @@ Phase 1 complete:
 - Deterministic citation metadata extraction without inventing missing fields
 - CSV, SQLite, and JSON data profiling under `outputs/data-profiles/`
 - M.Phil and PhD research stage templates
-- Research question approve, reject, archive, and list workflows
+- Research question approve, reject, archive, list, and deterministic readiness-check workflows
 - Manual claim ledger and citation gap reports
 - Artefact registry records with linked sources, linked research questions, and review flags
 - Deterministic artefact creation for source summaries, literature review matrices, claim-evidence tables, research question briefs, and data profile summaries
@@ -224,6 +224,7 @@ researchboss sources accept <source-id> --workspace <path>
 researchboss sources maybe <source-id> --workspace <path>
 researchboss sources ignore <source-id> --reason "Reason" --workspace <path>
 researchboss rqs list [--workspace <path>]
+researchboss rqs check [<rq-id>] [--workspace <path>]
 researchboss rqs approve <rq-id> [--workspace <path>]
 researchboss rqs reject <rq-id> --reason "Reason" [--workspace <path>]
 researchboss rqs archive <rq-id> --reason "Reason" [--workspace <path>]
@@ -240,6 +241,8 @@ researchboss artefacts list [--workspace <path>]
 ```
 
 `researchboss artefacts create` is deterministic and non-AI. It only extracts and arranges existing workspace state, excludes ignored sources, writes generated artefacts inside the workspace, marks them as requiring user review, and records `ai_generated: false`.
+
+`researchboss rqs check` is also deterministic and non-AI. It checks question form, scope signals, vague terms, possible multiple-question wording, basic context markers, subquestion alignment, and level-specific readiness hints. It does not validate novelty, contribution strength, field usefulness, or evidence quality; those require human review or later AI-assisted workflows.
 
 For commands that mutate a specific source by ID, passing `--workspace` is still recommended in scripts. In interactive use, omitting `--workspace` triggers the same workspace discovery and default-selection flow.
 

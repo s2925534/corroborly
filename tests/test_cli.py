@@ -390,6 +390,26 @@ def test_cli_rqs_workflow_commands(tmp_path: Path) -> None:
     assert read_yaml(workspace / "research-questions.yaml")["research_questions"][0]["id"] == "rq-001"
 
 
+def test_cli_rqs_check_writes_readiness_report(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(
+        workspace,
+        project_name="Test Project",
+        project_type="PhD",
+        topic="",
+        research_questions=[{"question": "What is the impact of things?", "status": "draft", "subquestions": []}],
+    )
+
+    result = runner.invoke(app, ["rqs", "check", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    report = read_yaml(workspace / "outputs" / "validation" / "research-question-readiness.yaml")
+    assert report["ai_used"] is False
+    assert report["checked_count"] == 1
+    candidates = read_yaml(workspace / "research-question-candidates.yaml")["candidates"]
+    assert candidates[0]["readiness"]["checked_by"] == "deterministic_rules"
+
+
 def test_cli_artefacts_register_and_list(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")

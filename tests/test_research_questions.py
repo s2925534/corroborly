@@ -4,6 +4,8 @@ import pytest
 
 from researchboss.core.yamlio import read_yaml
 from researchboss.engine.research_questions import (
+    assess_research_question_readiness,
+    check_research_question_readiness,
     approve_research_question,
     archive_research_question,
     list_research_questions,
@@ -55,3 +57,38 @@ def test_approve_research_question_rejects_unknown_id(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unknown candidate"):
         approve_research_question(workspace, "rq-999")
+
+
+def test_assess_research_question_readiness_flags_scope_without_claiming_strength() -> None:
+    result = assess_research_question_readiness(
+        "What is the impact of things and how can it be better?",
+        project_type="PhD",
+    )
+
+    codes = {finding["code"] for finding in result["findings"]}
+    assert result["status"] in {"possibly_multiple_questions", "needs_scope"}
+    assert "possibly_multiple_questions" in codes
+    assert "vague_terms" in codes
+    assert "novelty assessment" in result["ai_required_for_higher_certainty"]
+    assert "Does not validate novelty." in result["limits"]
+
+
+def test_check_research_question_readiness_writes_report_and_updates_records(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+
+    report = check_research_question_readiness(workspace)
+
+    assert report["ai_used"] is False
+    assert report["human_review_required"] is True
+    assert report["checked_count"] == 2
+    assert (workspace / "outputs" / "validation" / "research-question-readiness.yaml").is_file()
+    groups = list_research_questions(workspace)
+    assert groups["approved"][0]["readiness"]["checked_by"] == "deterministic_rules"
+    assert groups["candidates"][0]["readiness"]["human_review_required"] is True
+
+
+def test_check_research_question_readiness_rejects_unknown_id(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+
+    with pytest.raises(ValueError, match="Unknown research question"):
+        check_research_question_readiness(workspace, rq_id="rq-999")

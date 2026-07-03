@@ -1,6 +1,6 @@
 # ResearchBoss Detailed Roadmap
 
-Project version: 0.3.3
+Project version: 0.3.5
 
 Last updated: 2026-07-03
 
@@ -30,7 +30,7 @@ Implemented:
 - Artefact registry with linked sources, linked research questions, review flags, and AI flags.
 - Deterministic artefact creation for source summaries, literature review matrices, claim-evidence tables, research question briefs, and data profile summaries.
 - M.Phil and PhD stage templates.
-- Research question list, approve, reject, and archive workflows.
+- Research question list, approve, reject, archive, and deterministic readiness-check workflows.
 - Manual claim ledger and citation gap detection.
 - Local Markdown workspace reports.
 - One-shot watch reports for unregistered source files.
@@ -56,6 +56,12 @@ Not implemented:
 - Packaging.
 
 Current repository state: coherent and test-covered for local deterministic engine and CLI workflows through conversion, metadata, data profiling, Zotero offline support, research questions, claims, reports, backup, and migration.
+
+Deterministic boundary:
+
+- Current non-AI workflows may extract, count, list, copy metadata, link explicit IDs, profile files, and create fixed templates from workspace state.
+- Current non-AI workflows must not interpret meaning, judge usefulness, assess novelty, infer evidence strength, synthesize arguments, rank relevance beyond explicit rule-based matching, or create conclusions from source content.
+- Anything not safely deterministic belongs to the later AI implementation phase, behind explicit user opt-in, privacy-boundary tests, and workspace-only output rules.
 
 ## 2. Repository Structure Review
 
@@ -149,7 +155,7 @@ Expected future folders:
 | Data profiling | Implemented | `researchboss/engine/data.py`, `cli.py` | CSV, SQLite, JSON profiles. |
 | Deterministic artefact creation | Implemented | `researchboss/engine/artefact_creation.py`, `cli.py` | Non-AI workspace reports/tables requiring user review. |
 | Artefact registry | Implemented | `researchboss/engine/artefacts.py`, `cli.py` | Linked sources/RQs, review and AI flags. |
-| Research stages/questions | Implemented | `workspace.py`, `research_questions.py`, `cli.py` | M.Phil/PhD stages and RQ workflow commands. |
+| Research stages/questions | Implemented | `workspace.py`, `research_questions.py`, `cli.py` | M.Phil/PhD stages, RQ workflow commands, and deterministic readiness checks. |
 | Claims and citation gaps | Implemented | `researchboss/engine/claims.py`, `cli.py` | Manual claims and gap report. |
 | Reports/watch/backup/migration | Implemented | `reports.py`, `watch.py`, `backup.py`, `migrations.py` | Local deterministic utility workflows. |
 | Hashing | Implemented | `sha256_file` in `sources.py` | SHA-256 content hash. |
@@ -213,11 +219,14 @@ Implemented:
 - M.Phil and PhD stage templates.
 - Stage statuses.
 - RQ list, approve, reject, and archive commands.
+- Deterministic RQ readiness checks for question form, scope signals, vague wording, possible multiple questions, context markers, subquestion alignment, and project-level hints.
+- Local RQ readiness reports under `outputs/validation/research-question-readiness.yaml`.
 
 Future:
 
 - Richer RQ templates for all project types.
 - Warning thresholds.
+- AI-assisted RQ strength, novelty, field usefulness, contribution, and evidence-quality review after privacy-boundary tests exist.
 
 ### Phase 5: Optional OpenAI Features
 
@@ -301,6 +310,7 @@ Next work:
 | `researchboss zotero export-bibtex` | Implemented | Writes conservative BibTeX from local metadata. |
 | `researchboss zotero test` | Implemented | Validates local storage, SQLite, and cache availability. |
 | `researchboss rqs list` | Implemented | Lists RQ groups. |
+| `researchboss rqs check` | Implemented | Deterministic readiness checks only; no novelty or contribution-strength claims. |
 | `researchboss rqs suggest` | Missing | Phase 4 or Phase 5 depending on AI use. |
 | `researchboss rqs approve` | Implemented | Approves draft RQs. |
 | `researchboss rqs reject` | Implemented | Rejects RQs. |
@@ -419,6 +429,8 @@ Missing:
 
 Planned AI options:
 
+- Workflows marked as not safely deterministic will be implemented only in the AI phase, not in the current deterministic engine.
+- Research question strength, novelty, contribution certainty, field usefulness, and evidence-quality reasoning will be AI-assisted or human-review workflows, not deterministic validators.
 - Explicit user-controlled options to allow AI to read an entire file when the user approves that level of context.
 - Explicit user-controlled options to allow AI to read a directory of files when the user approves that level of context.
 - Optional full-paper reasoning mode for consuming entire papers.

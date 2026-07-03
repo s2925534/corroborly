@@ -4,6 +4,11 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Bumped project version to 0.3.5.
+- Added deterministic `researchboss rqs check` readiness checks with local validation reports and per-question readiness metadata.
+- Documented that novelty, contribution strength, field usefulness, and evidence-quality certainty remain human-review or future AI-assisted concerns.
+- Bumped project version to 0.3.4.
+- Added the roadmap rule that anything not safely deterministic belongs to the later AI implementation phase with explicit opt-in and privacy-boundary tests.
 - Bumped project version to 0.3.3.
 - Added deterministic `researchboss artefacts create` workflows for source summaries, literature review matrices, claim-evidence tables, research question briefs, and data profile summaries.
 - Ensured generated artefacts are non-AI, workspace-only, exclude ignored sources by default, and require user review.
