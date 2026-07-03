@@ -21,7 +21,19 @@ from researchboss.engine.sources import (
     set_source_status,
     source_counts,
 )
-from researchboss.engine.zotero import keyword_terms, search_zotero_storage
+from researchboss.engine.zotero import (
+    attachment_health_report,
+    duplicate_metadata_candidates,
+    export_bibtex_from_metadata,
+    fulltext_availability_report,
+    keyword_terms,
+    list_zotero_collections,
+    metadata_quality_report,
+    search_zotero_storage,
+    storage_keys_for_collections,
+    zotero_metadata_snapshot,
+    zotero_root_from_storage,
+)
 from researchboss import __version__
 from researchboss.engine.workspace import (
     AI_PREFERENCES,
@@ -324,6 +336,50 @@ def _configured_source_root(workspace: Path) -> tuple[Optional[Path], str, dict]
     return (Path(cfg_root) if cfg_root else None), source_mode, source_config
 
 
+def _configured_zotero(workspace: Path) -> dict:
+    ctx = read_yaml(workspace / "research-context.yaml")
+    return ctx.get("zotero") or {}
+
+
+def _resolve_zotero_paths(workspace: Path, storage: Optional[Path] = None) -> tuple[Path, Optional[Path], dict]:
+    cfg_root, _source_mode, _source_config = _configured_source_root(workspace)
+    zotero_config = _configured_zotero(workspace)
+    storage_root = storage or (Path(zotero_config["storage"]) if zotero_config.get("storage") else cfg_root)
+    if not storage_root:
+        raise ValueError("No Zotero storage root configured or provided")
+    zotero_root = Path(zotero_config["root"]) if zotero_config.get("root") else zotero_root_from_storage(storage_root)
+    return storage_root, zotero_root, zotero_config
+
+
+def _write_zotero_config(workspace: Path, updates: dict) -> None:
+    context_path = workspace / "research-context.yaml"
+    ctx = read_yaml(context_path)
+    zotero_config = ctx.get("zotero") or {}
+    zotero_config.update(updates)
+    ctx["zotero"] = zotero_config
+    write_yaml(context_path, ctx)
+
+
+def _zotero_filtered_candidates(storage_root: Path, zotero_root: Optional[Path], zotero_config: dict) -> list[Path]:
+    candidates = list(iter_source_files(storage_root))
+    if not zotero_root:
+        return candidates
+    if zotero_config.get("mode") != "selected_collections":
+        return candidates
+
+    selected = zotero_config.get("selected_collections") or []
+    keys = [item.get("key") for item in selected if isinstance(item, dict) and item.get("key")]
+    if not keys:
+        return candidates
+
+    allowed_keys = storage_keys_for_collections(
+        zotero_root,
+        keys,
+        include_subcollections=bool(zotero_config.get("include_subcollections", True)),
+    )
+    return [path for path in candidates if path.parent.name in allowed_keys]
+
+
 def _print_init_next_steps(workspace: Path, source_root: Optional[str]) -> None:
     console.print(f"[green]Workspace created:[/green] {workspace}")
     console.print("\n[bold]Useful next commands[/bold]")
@@ -531,7 +587,12 @@ def scan(
         _finish(summary, summary_path, next_action="Fix the path and rerun scan")
         raise typer.Exit(code=2)
 
-    candidates = list(iter_source_files(scan_root))
+    zotero_config = _configured_zotero(ws)
+    zotero_root = Path(zotero_config["root"]) if provider == "zotero_storage" and zotero_config.get("root") else None
+    if provider == "zotero_storage":
+        candidates = _zotero_filtered_candidates(scan_root, zotero_root, zotero_config)
+    else:
+        candidates = list(iter_source_files(scan_root))
     total = max(1, len(candidates))  # safe zero handling
 
     if not quiet:
@@ -562,6 +623,7 @@ def scan(
             logger=logger,
             file_paths=candidates,
             initial_status=initial_status,
+            zotero_root=zotero_root,
         )
 
     summary.files_processed = result.processed
@@ -573,6 +635,147 @@ def scan(
     if not quiet:
         console.print(
             f"[green]Scan complete[/green] processed={result.processed} added={result.added} "
+            f"duplicates={result.duplicates} skipped={result.skipped}"
+        )
+
+
+@zotero_app.command("collections")
+def zotero_collections(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List collections from local zotero.sqlite without using the Zotero API."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "collections"], ws, log_level)
+    _storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_collections")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    collections = list_zotero_collections(zotero_root)
+    logger.info("Listed Zotero collections", operation="zotero_collections", count=len(collections))
+    _finish(summary, summary_path)
+
+    if quiet:
+        return
+    table = Table(title="Zotero collections")
+    table.add_column("key")
+    table.add_column("path")
+    table.add_column("items", justify="right")
+    for collection in collections:
+        table.add_row(collection.key, collection.path, str(collection.item_count))
+    console.print(table)
+
+
+@zotero_app.command("select-collections")
+def zotero_select_collections(
+    collection_keys: list[str] = typer.Argument(..., help="Collection keys to use for Zotero scans."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    include_subcollections: bool = typer.Option(True, "--include-subcollections/--no-subcollections"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Configure selected local Zotero collections for future scans."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "select_collections"], ws, log_level)
+    _storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_select_collections")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    known = {collection.key: collection for collection in list_zotero_collections(zotero_root)}
+    missing = [key for key in collection_keys if key not in known]
+    if missing:
+        logger.error("Unknown Zotero collection keys", operation="zotero_select_collections", missing=missing)
+        summary.errors += 1
+        _finish(summary, summary_path, next_action="Run `researchboss zotero collections` to list valid keys.")
+        if not quiet:
+            console.print(f"[red]Unknown collection keys:[/red] {', '.join(missing)}")
+        raise typer.Exit(code=2)
+
+    selected = [{"key": key, "name": known[key].name, "path": known[key].path} for key in collection_keys]
+    _write_zotero_config(
+        ws,
+        {
+            "mode": "selected_collections",
+            "selected_collections": selected,
+            "include_subcollections": include_subcollections,
+        },
+    )
+    logger.info(
+        "Configured selected Zotero collections",
+        operation="zotero_select_collections",
+        collection_keys=collection_keys,
+        include_subcollections=include_subcollections,
+    )
+    _finish(summary, summary_path, next_action="Run `researchboss scan` to scan selected collections.")
+    if not quiet:
+        console.print(f"[green]Configured[/green] {len(selected)} selected Zotero collection(s).")
+
+
+@zotero_app.command("use-entire-library")
+def zotero_use_entire_library(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Configure Zotero scans to use the entire local storage library."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "use_entire_library"], ws, log_level)
+    _write_zotero_config(ws, {"mode": "entire_library", "selected_collections": []})
+    logger.info("Configured entire Zotero library mode", operation="zotero_use_entire_library")
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print("[green]Configured[/green] Zotero entire-library mode.")
+
+
+@zotero_app.command("scan-collection")
+def zotero_scan_collection(
+    collection_key: str = typer.Argument(..., help="Collection key to scan once."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    include_subcollections: bool = typer.Option(True, "--include-subcollections/--no-subcollections"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Scan one local Zotero collection without changing saved collection mode."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "scan_collection"], ws, log_level)
+    storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_scan_collection")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    allowed_keys = storage_keys_for_collections(zotero_root, [collection_key], include_subcollections=include_subcollections)
+    candidates = [path for path in iter_source_files(storage_root) if path.parent.name in allowed_keys]
+    result = scan_sources(
+        ws,
+        storage_root,
+        provider="zotero_storage",
+        logger=logger,
+        file_paths=candidates,
+        zotero_root=zotero_root,
+    )
+    summary.files_processed = result.processed
+    summary.files_succeeded = result.added
+    summary.files_skipped = result.skipped
+    logger.info(
+        "Scanned Zotero collection",
+        operation="zotero_scan_collection",
+        collection_key=collection_key,
+        candidates=len(candidates),
+        added=result.added,
+    )
+    _finish(summary, summary_path, next_action="Run `researchboss sources review` to review discovered sources.")
+    if not quiet:
+        console.print(
+            f"[green]Collection scan complete[/green] processed={result.processed} added={result.added} "
             f"duplicates={result.duplicates} skipped={result.skipped}"
         )
 
@@ -647,6 +850,170 @@ def zotero_search(
     console.print(table)
     if not hits:
         console.print("[yellow]No matches found.[/yellow]")
+
+
+@zotero_app.command("metadata-report")
+def zotero_metadata_report(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Report missing local Zotero metadata fields from read-only zotero.sqlite."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "metadata_report"], ws, log_level)
+    _storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_metadata_report")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    report = metadata_quality_report(zotero_root)
+    output_path = ws / "outputs" / "validation" / "zotero-metadata-report.yaml"
+    write_yaml(output_path, report)
+    logger.info("Wrote Zotero metadata report", operation="zotero_metadata_report", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print(
+            f"attachments={report['total_attachments']} missing_title={len(report['missing_title'])} "
+            f"missing_year={len(report['missing_year'])} missing_doi={len(report['missing_doi'])} "
+            f"missing_creators={len(report['missing_creators'])}"
+        )
+
+
+@zotero_app.command("attachment-health")
+def zotero_attachment_health(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Compare local Zotero storage files with attachment records in zotero.sqlite."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "attachment_health"], ws, log_level)
+    storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_attachment_health")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    paths = list(iter_source_files(storage_root))
+    report = attachment_health_report(zotero_root, storage_root, paths)
+    output_path = ws / "outputs" / "validation" / "zotero-attachment-health.yaml"
+    write_yaml(output_path, report)
+    logger.info("Wrote Zotero attachment health report", operation="zotero_attachment_health", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print(
+            f"storage_files={report['storage_files']} sqlite_attachments={report['sqlite_attachments']} "
+            f"missing_files={len(report['missing_attachment_files'])} unlinked_files={len(report['unlinked_storage_files'])}"
+        )
+
+
+@zotero_app.command("fulltext-report")
+def zotero_fulltext_report(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Report which local Zotero storage files have `.zotero-ft-cache` available."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "fulltext_report"], ws, log_level)
+    storage_root, _zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    paths = list(iter_source_files(storage_root))
+    report = fulltext_availability_report(storage_root, paths)
+    output_path = ws / "outputs" / "validation" / "zotero-fulltext-report.yaml"
+    write_yaml(output_path, report)
+    logger.info("Wrote Zotero fulltext report", operation="zotero_fulltext_report", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print(
+            f"total={report['total_sources']} with_cache={report['with_fulltext_cache']} "
+            f"without_cache={report['without_fulltext_cache']}"
+        )
+
+
+@zotero_app.command("duplicates")
+def zotero_duplicates(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Find possible local Zotero metadata duplicates by DOI or title/year."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "duplicates"], ws, log_level)
+    _storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_duplicates")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    duplicates = {"version": 1, "duplicates": duplicate_metadata_candidates(zotero_root)}
+    output_path = ws / "outputs" / "validation" / "zotero-duplicates.yaml"
+    write_yaml(output_path, duplicates)
+    logger.info("Wrote Zotero duplicate report", operation="zotero_duplicates", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print(f"duplicate_groups={len(duplicates['duplicates'])}")
+
+
+@zotero_app.command("snapshot")
+def zotero_snapshot(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    output: Optional[Path] = typer.Option(None, "--output", help="Snapshot output path."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Write a reproducible local Zotero metadata snapshot into the workspace."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "snapshot"], ws, log_level)
+    _storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_snapshot")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    output_path = output or (ws / "sources_metadata" / "zotero-snapshot.yaml")
+    write_yaml(output_path, zotero_metadata_snapshot(zotero_root))
+    logger.info("Wrote Zotero metadata snapshot", operation="zotero_snapshot", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+
+
+@zotero_app.command("export-bibtex")
+def zotero_export_bibtex(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    output: Optional[Path] = typer.Option(None, "--output", help="BibTeX output path."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Export conservative BibTeX from local Zotero SQLite metadata."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["zotero", "export_bibtex"], ws, log_level)
+    _storage_root, zotero_root, _zotero_config = _resolve_zotero_paths(ws)
+    if not zotero_root:
+        logger.error("Could not derive Zotero root", operation="zotero_export_bibtex")
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    output_path = output or (ws / "outputs" / "reports" / "zotero-references.bib")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    content = export_bibtex_from_metadata(zotero_root)
+    output_path.write_text(content, encoding="utf-8")
+    entries = content.count("\n@") + (1 if content.startswith("@") else 0)
+    logger.info("Exported Zotero BibTeX", operation="zotero_export_bibtex", output_path=str(output_path), entries=entries)
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print(f"entries={entries}")
 
 
 @sources_app.command("list")

@@ -8,6 +8,7 @@ from typing import Any, Iterable, Optional
 
 from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.zotero import (
+    attachment_metadata_by_storage_key,
     has_zotero_fulltext_cache,
     zotero_relative_path,
     zotero_storage_key,
@@ -80,6 +81,7 @@ def scan_sources(
     logger: Optional[Any] = None,
     file_paths: Optional[list[Path]] = None,
     initial_status: str = "pending_review",
+    zotero_root: Optional[Path] = None,
 ) -> ScanResult:
     if initial_status not in INITIAL_SOURCE_STATUSES:
         allowed = ", ".join(sorted(INITIAL_SOURCE_STATUSES))
@@ -126,13 +128,18 @@ def scan_sources(
             "notes": None,
         }
         if provider == "zotero_storage":
+            storage_key = zotero_storage_key(p, source_root)
             record.update(
                 {
-                    "zotero_storage_key": zotero_storage_key(p, source_root),
+                    "zotero_storage_key": storage_key,
                     "zotero_relative_path": zotero_relative_path(p, source_root),
                     "has_zotero_fulltext_cache": has_zotero_fulltext_cache(p, source_root),
                 }
             )
+            if zotero_root and storage_key:
+                metadata = attachment_metadata_by_storage_key(zotero_root, storage_key)
+                if metadata:
+                    record.update(metadata.as_source_fields())
         reg["sources"].append(record)
         if initial_status == "maybe":
             maybe["source_ids"].append(source_id)

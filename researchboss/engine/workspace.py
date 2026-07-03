@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from researchboss.core.constants import WORKSPACE_FILES, ensure_workspace_dirs
 from researchboss.core.yamlio import write_yaml
+from researchboss.engine.zotero import zotero_root_from_storage, zotero_sqlite_path
 
 
 PROJECT_TYPES = ["M.Phil", "PhD", "Other academic research", "Industry research", "Custom"]
@@ -61,6 +62,31 @@ def infer_source_mode(source_answer: str, zotero_storage: Optional[Path] = None)
         return "zotero_storage"
 
     return "local_folder"
+
+
+def zotero_config_for_source(source_root: Optional[str], source_mode: str) -> dict[str, Any]:
+    if source_mode != "zotero_storage" or not source_root:
+        return {
+            "root": None,
+            "storage": None,
+            "database_path": None,
+            "mode": "not_configured",
+            "selected_collections": [],
+            "include_subcollections": True,
+            "metadata_source": "local_sqlite",
+        }
+
+    storage = Path(source_root).expanduser()
+    root = zotero_root_from_storage(storage)
+    return {
+        "root": str(root) if root else None,
+        "storage": str(storage),
+        "database_path": str(zotero_sqlite_path(root)) if root else None,
+        "mode": "entire_library",
+        "selected_collections": [],
+        "include_subcollections": True,
+        "metadata_source": "local_sqlite",
+    }
 
 
 def _default_app_settings(ai_preference: str = "no") -> dict[str, Any]:
@@ -133,6 +159,7 @@ def init_workspace(
                 "new_source_status": source_review_default,
                 "requires_manual_review": source_review_default == "pending_review",
             },
+            "zotero": zotero_config_for_source(source_root, source_mode),
             "artefacts": {
                 "root": artefact_root,
                 "primary_output_type": primary_output_type,

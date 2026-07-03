@@ -64,6 +64,15 @@ def test_init_workspace_creates_expected_files_and_dirs(tmp_path: Path) -> None:
         "new_source_status": "pending_review",
         "requires_manual_review": True,
     }
+    assert context["zotero"] == {
+        "root": None,
+        "storage": None,
+        "database_path": None,
+        "mode": "not_configured",
+        "selected_collections": [],
+        "include_subcollections": True,
+        "metadata_source": "local_sqlite",
+    }
     assert context["artefacts"] == {
         "root": None,
         "primary_output_type": "notes",
@@ -198,6 +207,33 @@ def test_find_default_zotero_storage_falls_back_to_profile_storage(tmp_path: Pat
     profile_storage.mkdir(parents=True)
 
     assert find_default_zotero_storage(home=tmp_path, system="Darwin") == profile_storage
+
+
+def test_init_workspace_configures_zotero_root_from_storage(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    storage = tmp_path / "Zotero" / "storage"
+    storage.mkdir(parents=True)
+
+    init_workspace(
+        workspace,
+        project_name="Test Project",
+        project_type="M.Phil",
+        topic="",
+        source_root=str(storage),
+        source_mode="zotero_storage",
+    )
+
+    context = read_yaml(workspace / WORKSPACE_FILES.research_context)
+    assert context["sources"]["root"] == str(storage)
+    assert context["zotero"] == {
+        "root": str(storage.parent),
+        "storage": str(storage),
+        "database_path": str(storage.parent / "zotero.sqlite"),
+        "mode": "entire_library",
+        "selected_collections": [],
+        "include_subcollections": True,
+        "metadata_source": "local_sqlite",
+    }
 
 
 def test_infer_source_mode_from_answer() -> None:
