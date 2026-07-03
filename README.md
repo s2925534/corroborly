@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.5.0
+Current version: 0.5.1
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -56,6 +56,7 @@ Phase 1 complete:
 - Workspace health reports and backup restore dry-run inspection
 - OpenAI readiness checks through `researchboss ai test`, with live requests requiring explicit `--ai`
 - Safe local AI context previews through `researchboss ai context-preview --ai`, excluding original files and whole documents or datasets by default
+- AI-assisted review, novelty assessment, and research-question assessment commands, all requiring explicit `--ai`
 - Zotero-style citation wording during init, including explicit `American Psychological Association 7th edition`
 - Strict one-way Zotero-to-ResearchBoss blocker config that prevents writes inside the local Zotero directory
 - SHA-256 file hashing
@@ -75,10 +76,10 @@ Phase 1 complete:
 
 Known gaps:
 
-- OpenAI readiness and safe context preview are implemented. AI-assisted review, novelty assessment, and research-question strength reasoning are not implemented yet.
+- OpenAI readiness, safe context preview, AI-assisted review, novelty assessment, and research-question assessment are implemented with explicit `--ai` opt-in and local report outputs.
 - FastAPI, UI, and packaging are planned but not implemented yet.
 - Zotero support defaults to local filesystem and read-only SQLite. Optional read-only Zotero Web API collection listing and selection are implemented.
-- The source review workflow is implemented for local workspace state. Deterministic artefact creation can consume accepted sources, but AI-assisted research tasks are not implemented yet.
+- The source review workflow is implemented for local workspace state. Deterministic artefact creation can consume accepted sources, and AI-assisted review/novelty/RQ assessment can use safe accepted-source context when explicitly enabled with `--ai`.
 - Init stores AI preference metadata and keeps AI disabled by default.
 
 ## Intended MVP Scope
@@ -223,6 +224,9 @@ researchboss backup-inspect <backup.zip> [--workspace <path>]
 researchboss export-evidence [--workspace <path>]
 researchboss ai test [--workspace <path>] [--ai]
 researchboss ai context-preview --ai [--workspace <path>]
+researchboss ai review --ai [--workspace <path>]
+researchboss assess-novelty --ai [--workspace <path>]
+researchboss rqs assess --ai [--workspace <path>] [--rq <rq-id>]
 researchboss zotero search "keyword terms" [--workspace <path>] [--storage <zotero-storage-folder>]
 researchboss zotero collections [--workspace <path>]
 researchboss zotero test [--workspace <path>]
@@ -341,6 +345,8 @@ Environment variables are read from the repository root `.env` file during local
 OpenAI support is optional and disabled by default. `researchboss ai test` checks whether `OPENAI_API_KEY` is available from the process environment, repository `.env`, or workspace `.env` without printing or logging the key. It does not make a live OpenAI request unless `--ai` is passed.
 
 `researchboss ai context-preview --ai` writes a local preview file at `outputs/validation/openai-safe-context.yaml`. It uses accepted source metadata and bounded converted-text excerpts only. It excludes original files, whole PDFs, whole CSV files, whole SQLite databases, and Zotero directory writes by default. It does not call OpenAI.
+
+`researchboss ai review --ai`, `researchboss assess-novelty --ai`, and `researchboss rqs assess --ai` use the same safe context boundary and write local reports. They are AI-assisted outputs, not proof. Human review is required before using their conclusions.
 
 Source statuses are currently limited to:
 

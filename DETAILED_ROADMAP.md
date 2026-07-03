@@ -1,6 +1,6 @@
 # ResearchBoss Detailed Roadmap
 
-Project version: 0.5.0
+Project version: 0.5.1
 
 Last updated: 2026-07-03
 
@@ -50,17 +50,18 @@ Implemented:
 - JSONL logs and YAML run summaries.
 - OpenAI readiness checks through `researchboss ai test`, with live requests requiring explicit `--ai`.
 - Safe AI context preview generation that excludes original files, whole documents, whole CSVs, and whole SQLite databases by default.
+- AI-assisted review, novelty assessment, and research-question assessment behind explicit `--ai`.
 - README, AGENTS.md, architecture notes, TODO, changelog, and tests.
 - Planned local FastAPI API contract in `docs/api/CONTRACT.md`.
 
 Partially implemented:
 
 - Zotero support: local storage-folder, read-only SQLite support, and read-only Zotero Web API collection listing/selection exist.
-- AI setup: OpenAI readiness and safe context preview exist; AI-assisted research behavior is not implemented.
+- AI setup: OpenAI readiness, safe context preview, AI-assisted review, novelty assessment, and research-question assessment exist.
 
 Not implemented:
 
-- Optional AI-assisted review, novelty assessment, and research-question strength workflows.
+- Future AI corpus summary, claim checking assistance, citation gap recommendations, artefact cross-reference, explicit full-file opt-ins, and source relevance recommendations.
 - FastAPI backend.
 - Cross-platform UI.
 - Packaging.
@@ -251,7 +252,7 @@ Future:
 
 ### Phase 5: Optional OpenAI Features
 
-Status: foundation started.
+Status: implemented for current safe-context MVP workflows.
 
 Implemented:
 
@@ -261,12 +262,18 @@ Implemented:
 - `OPENAI_API_KEY` loading from environment or local `.env` without printing or logging the key.
 - Explicit `--ai` opt-in for live OpenAI credential checks.
 - `researchboss ai context-preview --ai` for local safe-context preview generation.
+- `researchboss ai review --ai` for AI-assisted source/corpus review.
+- `researchboss assess-novelty --ai` with `novelty-ledger.yaml` updates.
+- `researchboss rqs assess --ai` for AI-assisted research question strength, novelty, field usefulness, and evidence-quality review.
 - Privacy-boundary tests for missing keys, key non-disclosure, explicit `--ai`, and whole-document/dataset exclusion.
 
 Next work:
 
-- Optional review and novelty flows.
-- AI-assisted research question strength and evidence-quality review after additional workflow-specific tests.
+- AI corpus summary reports.
+- AI claim-checking assistance.
+- AI citation gap recommendations.
+- AI artefact cross-reference review.
+- Explicit full-file and full-directory opt-in modes with warning output and tests.
 
 ### Phase 6: FastAPI Local Backend
 
@@ -334,7 +341,7 @@ Next work:
 | `researchboss zotero test` | Implemented | Validates local storage, SQLite, and cache availability. |
 | `researchboss rqs list` | Implemented | Lists RQ groups. |
 | `researchboss rqs check` | Implemented | Deterministic readiness checks only; no novelty or contribution-strength claims. |
-| `researchboss rqs suggest` | Missing | Phase 4 or Phase 5 depending on AI use. |
+| `researchboss rqs suggest` | Missing | Future AI or template workflow. |
 | `researchboss rqs approve` | Implemented | Approves draft RQs. |
 | `researchboss rqs reject` | Implemented | Rejects RQs. |
 | `researchboss rqs archive` | Implemented | Archives RQs. |
@@ -342,7 +349,8 @@ Next work:
 | `researchboss artefacts register/list` | Implemented | Artefact registry workflow. |
 | `researchboss artefacts create` | Implemented | Deterministic non-AI artefact creation from existing workspace state. |
 | `researchboss review` | Missing | Later integrated review workflow. |
-| `researchboss assess-novelty` | Missing | Phase 5. |
+| `researchboss rqs assess` | Implemented | AI-assisted RQ assessment; requires `--ai`. |
+| `researchboss assess-novelty` | Implemented | AI-assisted novelty assessment; requires `--ai`; updates novelty ledger. |
 | `researchboss ai test` | Implemented | Local readiness check; live OpenAI request requires explicit `--ai`. |
 
 ## 6. Config and Workspace Audit
@@ -430,7 +438,7 @@ Implemented:
 
 ## 11. AI and OpenAI Audit
 
-Status: foundation started.
+Status: implemented for current safe-context MVP workflows.
 
 Implemented:
 
@@ -442,14 +450,18 @@ Implemented:
 - API key is not printed or logged.
 - `researchboss ai test` writes a local readiness report.
 - `researchboss ai context-preview --ai` writes a local safe context preview without making an OpenAI request.
-- Tests cover missing key behavior, key non-disclosure, explicit `--ai`, and no default whole-document/dataset inclusion.
+- `researchboss ai review --ai` writes a local AI-assisted review report.
+- `researchboss assess-novelty --ai` writes a local novelty report and appends `novelty-ledger.yaml`.
+- `researchboss rqs assess --ai` writes a local AI-assisted research-question assessment report.
+- Tests cover missing key behavior, key non-disclosure, explicit `--ai`, no default whole-document/dataset inclusion, and mocked AI workflow outputs.
 
 Missing:
 
-- AI-assisted source review.
-- Novelty assessment.
 - Corpus summary behavior.
-- AI-assisted research-question strength, field usefulness, and evidence-quality review.
+- AI-assisted claim checking.
+- AI-assisted citation gap recommendations.
+- AI-assisted artefact cross-reference review.
+- Explicit full-file and directory opt-in modes.
 
 Planned AI options:
 
@@ -460,6 +472,16 @@ Planned AI options:
 - Optional full-paper reasoning mode for consuming entire papers.
 - Optional cross-reference mode where AI can compare full papers against in-progress artefacts.
 - These modes must be disabled by default, must never modify Zotero, and must keep outputs inside the ResearchBoss workspace.
+
+Future AI work that makes sense to implement next:
+
+- AI corpus summary reports from safe context only.
+- AI claim-checking assistance against accepted sources and `claims-ledger.yaml`.
+- AI citation gap recommendations using accepted sources, claims, and research questions.
+- AI artefact cross-reference review against in-progress artefacts.
+- Explicit per-run full-file AI opt-in flags with warning output and tests.
+- Explicit per-run directory AI opt-in flags with warning output and tests.
+- AI source relevance recommendations that cite source IDs and never modify source statuses automatically.
 
 ## 12. Tests Audit
 

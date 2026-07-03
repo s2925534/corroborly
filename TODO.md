@@ -105,10 +105,20 @@
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Keep OpenAI disabled unless explicitly requested with `--ai`.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Keep Anthropic, Claude, and local LLM providers as future flags only.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add a safe context preview builder that never sends whole PDFs, CSVs, SQLite databases, or original files by default.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> optional AI-assisted review.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> optional novelty assessment backed by `novelty-ledger.yaml`.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI-assisted research question strength, novelty, field usefulness, and evidence-quality review after privacy-boundary tests exist.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add optional AI-assisted review through `researchboss ai review --ai`.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add optional novelty assessment backed by `novelty-ledger.yaml` through `researchboss assess-novelty --ai`.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add AI-assisted research question strength, novelty, field usefulness, and evidence-quality review through `researchboss rqs assess --ai`.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add tests for missing API key behavior, key non-disclosure, explicit `--ai`, and safe-context privacy boundaries.
+
+## Future AI Work That Makes Sense To Implement
+
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI corpus summary reports from safe context only.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI claim-checking assistance against accepted sources and `claims-ledger.yaml`.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI citation gap recommendations using accepted sources, claims, and research questions.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI artefact cross-reference review against in-progress artefacts.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit per-run full-file AI opt-in flags with warning output and tests.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit per-run directory AI opt-in flags with warning output and tests.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI source relevance recommendations that cite source IDs and never modify source statuses automatically.
 
 ## Phase 6: FastAPI Local Backend
 

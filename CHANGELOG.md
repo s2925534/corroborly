@@ -4,6 +4,9 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Bumped project version to 0.5.1.
+- Added AI-assisted review, novelty assessment, and research-question assessment commands behind explicit `--ai` opt-in, with local report outputs and mocked privacy-boundary tests.
+- Added TODO and roadmap lists for future AI work that still makes sense to implement.
 - Bumped project version to 0.5.0.
 - Added Phase 5 OpenAI foundation: `researchboss ai test`, environment/`.env` key loading, explicit `--ai` live-check opt-in, safe context preview generation, and privacy-boundary tests.
 - Bumped project version to 0.4.1.
