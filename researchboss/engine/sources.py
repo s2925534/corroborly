@@ -228,6 +228,58 @@ def set_source_status(
     write_yaml(workspace / "ignored-sources.yaml", ignored)
 
 
+def set_source_note(workspace: Path, *, source_id: str, note: str) -> None:
+    reg = _load_register(workspace)
+    sources: list[dict[str, Any]] = [s for s in reg.get("sources", []) if isinstance(s, dict)]
+    for source in sources:
+        if source.get("source_id") == source_id:
+            source["notes"] = note
+            reg["sources"] = sources
+            _write_register(workspace, reg)
+            return
+    raise ValueError(f"Unknown source_id: {source_id}")
+
+
+def add_source_tag(workspace: Path, *, source_id: str, tag: str) -> None:
+    tag = tag.strip()
+    if not tag:
+        raise ValueError("Tag cannot be empty")
+    reg = _load_register(workspace)
+    sources: list[dict[str, Any]] = [s for s in reg.get("sources", []) if isinstance(s, dict)]
+    for source in sources:
+        if source.get("source_id") == source_id:
+            tags = list(source.get("tags") or [])
+            if tag not in tags:
+                tags.append(tag)
+            source["tags"] = tags
+            reg["sources"] = sources
+            _write_register(workspace, reg)
+            return
+    raise ValueError(f"Unknown source_id: {source_id}")
+
+
+def source_review_report(workspace: Path) -> dict[str, Any]:
+    sources = list_sources(workspace)
+    rows = []
+    for source in sources:
+        conversion = source.get("conversion") if isinstance(source.get("conversion"), dict) else {}
+        rows.append(
+            {
+                "source_id": source.get("source_id"),
+                "status": source.get("status"),
+                "file_name": source.get("file_name"),
+                "provider": source.get("provider"),
+                "duplicate_hash": source.get("content_hash"),
+                "conversion_status": conversion.get("status", "not_converted"),
+                "tags": source.get("tags") or [],
+                "has_notes": bool(source.get("notes")),
+            }
+        )
+    report = {"version": 1, "counts": source_counts(workspace), "sources": rows}
+    write_yaml(workspace / "outputs" / "validation" / "source-review-report.yaml", report)
+    return report
+
+
 def source_counts(workspace: Path) -> dict[str, int]:
     reg = _load_register(workspace)
     counts: dict[str, int] = {}

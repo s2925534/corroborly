@@ -8,6 +8,9 @@ from researchboss.engine.sources import (
     list_sources,
     scan_sources,
     set_source_status,
+    set_source_note,
+    add_source_tag,
+    source_review_report,
     source_counts,
     validate_source_provider,
 )
@@ -173,3 +176,23 @@ def test_set_source_status_rejects_invalid_review_status(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="Invalid review status"):
         set_source_status(workspace, source_id=source_id, new_status="done")
+
+
+def test_source_notes_tags_and_review_report(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("content", encoding="utf-8")
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+
+    set_source_note(workspace, source_id=source_id, note="Useful methods source")
+    add_source_tag(workspace, source_id=source_id, tag="methodology")
+    report = source_review_report(workspace)
+
+    source = read_yaml(workspace / "source-register.yaml")["sources"][0]
+    assert source["notes"] == "Useful methods source"
+    assert source["tags"] == ["methodology"]
+    assert report["sources"][0]["has_notes"] is True
+    assert report["sources"][0]["tags"] == ["methodology"]

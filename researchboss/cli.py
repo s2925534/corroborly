@@ -16,7 +16,13 @@ from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.artefact_creation import SUPPORTED_ARTEFACT_TYPES, create_deterministic_artefact
 from researchboss.engine.artefacts import artefact_dependency_report, list_artefacts, register_artefact, set_artefact_review_status
 from researchboss.engine.backup import create_workspace_backup, inspect_backup
-from researchboss.engine.claims import add_claim, list_claims, write_citation_gap_report
+from researchboss.engine.claims import (
+    add_claim,
+    claim_source_validation_report,
+    list_claims,
+    set_claim_status,
+    write_citation_gap_report,
+)
 from researchboss.engine.conversion import convert_sources
 from researchboss.engine.data import data_source_counts, list_data_sources, profile_data_sources
 from researchboss.engine.export import export_evidence_bundle
@@ -24,6 +30,13 @@ from researchboss.engine.health import workspace_health_report
 from researchboss.engine.metadata import extract_citation_metadata
 from researchboss.engine.metadata_quality import build_keyword_index, citation_consistency_report, duplicate_metadata_report
 from researchboss.engine.migrations import migrate_workspace
+from researchboss.engine.project_log import (
+    add_context_change,
+    add_decision,
+    add_feedback,
+    add_terminology,
+    timeline_report,
+)
 from researchboss.engine.research_questions import (
     check_research_question_readiness,
     approve_research_question,
@@ -38,6 +51,9 @@ from researchboss.engine.sources import (
     list_sources,
     scan_sources,
     set_source_status,
+    set_source_note,
+    add_source_tag,
+    source_review_report,
     source_counts,
     validate_source_provider,
 )
@@ -80,6 +96,10 @@ data_app = typer.Typer(help="Local data source commands.")
 rqs_app = typer.Typer(help="Research question workflow commands.")
 artefacts_app = typer.Typer(help="Artefact registry commands.")
 claims_app = typer.Typer(help="Claim ledger commands.")
+decisions_app = typer.Typer(help="Decision log commands.")
+terminology_app = typer.Typer(help="Terminology glossary commands.")
+feedback_app = typer.Typer(help="Supervisor/stakeholder feedback commands.")
+context_app = typer.Typer(help="Context changelog commands.")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
@@ -89,6 +109,10 @@ app.add_typer(data_app, name="data")
 app.add_typer(rqs_app, name="rqs")
 app.add_typer(artefacts_app, name="artefacts")
 app.add_typer(claims_app, name="claims")
+app.add_typer(decisions_app, name="decisions")
+app.add_typer(terminology_app, name="terminology")
+app.add_typer(feedback_app, name="feedback")
+app.add_typer(context_app, name="context")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -798,6 +822,22 @@ def export_evidence(
         console.print(f"[green]Wrote[/green] {output_path}")
 
 
+@app.command("timeline")
+def timeline(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Write a deterministic local timeline report."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["timeline"], ws, log_level)
+    report = timeline_report(ws)
+    logger.info("Wrote timeline report", operation="timeline", event_count=report["event_count"])
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {ws / 'outputs' / 'reports' / 'timeline.yaml'}")
+
+
 @app.command()
 def convert(
     workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
@@ -1276,6 +1316,111 @@ def claims_gaps(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
+
+
+@claims_app.command("status")
+def claims_status(
+    claim_id: str = typer.Argument(...),
+    status: str = typer.Argument(..., help="supported | needs_evidence | rejected | needs_review | active"),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Set a deterministic claim review status."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["claims", "status"], ws, log_level)
+    set_claim_status(ws, claim_id, status)
+    logger.info("Set claim status", operation="claims_status", claim_id=claim_id, status=status)
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Updated[/green] {claim_id}")
+
+
+@claims_app.command("validate")
+def claims_validate(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Validate that claims link only to existing accepted sources."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["claims", "validate"], ws, log_level)
+    report = claim_source_validation_report(ws)
+    logger.info("Wrote claim source validation report", operation="claims_validate", count=len(report["claims"]))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {ws / 'outputs' / 'validation' / 'claim-source-validation.yaml'}")
+
+
+@decisions_app.command("add")
+def decisions_add(
+    text: str = typer.Argument(...),
+    reason: str = typer.Option("", "--reason"),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Append a structured local decision."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["decisions", "add"], ws, log_level)
+    record = add_decision(ws, text, reason=reason)
+    logger.info("Added decision", operation="decisions_add", decision_id=record["id"])
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Added[/green] {record['id']}")
+
+
+@terminology_app.command("add")
+def terminology_add(
+    term: str = typer.Argument(...),
+    definition: str = typer.Argument(...),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Add or update a glossary term."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["terminology", "add"], ws, log_level)
+    add_terminology(ws, term, definition)
+    logger.info("Added terminology", operation="terminology_add", term=term)
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Updated[/green] {term}")
+
+
+@feedback_app.command("add")
+def feedback_add(
+    text: str = typer.Argument(...),
+    source: str = typer.Option("", "--source"),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Add supervisor or stakeholder feedback."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["feedback", "add"], ws, log_level)
+    record = add_feedback(ws, text, source=source)
+    logger.info("Added feedback", operation="feedback_add", feedback_id=record["id"])
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Added[/green] {record['id']}")
+
+
+@context_app.command("add")
+def context_add(
+    text: str = typer.Argument(...),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Append a structured context changelog item."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["context", "add"], ws, log_level)
+    record = add_context_change(ws, text)
+    logger.info("Added context change", operation="context_add", change_id=record["id"])
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Added[/green] {record['id']}")
 
 
 @zotero_app.command("collections")
@@ -1807,6 +1952,58 @@ def sources_ignore(
 
     if not quiet:
         console.print(f"[red]Ignored[/red] {source_id}")
+
+
+@sources_app.command("note")
+def sources_note(
+    source_id: str = typer.Argument(...),
+    note: str = typer.Argument(...),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Set a local note for a source."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["sources", "note"], ws, log_level)
+    set_source_note(ws, source_id=source_id, note=note)
+    logger.info("Set source note", operation="sources_note", source_id=source_id)
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Updated[/green] {source_id}")
+
+
+@sources_app.command("tag")
+def sources_tag(
+    source_id: str = typer.Argument(...),
+    tag: str = typer.Argument(...),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Add a deterministic manual tag to a source."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["sources", "tag"], ws, log_level)
+    add_source_tag(ws, source_id=source_id, tag=tag)
+    logger.info("Added source tag", operation="sources_tag", source_id=source_id, tag=tag)
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Tagged[/green] {source_id}")
+
+
+@sources_app.command("report")
+def sources_report(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Write a deterministic source review report."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["sources", "report"], ws, log_level)
+    report = source_review_report(ws)
+    logger.info("Wrote source review report", operation="sources_report", count=len(report["sources"]))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {ws / 'outputs' / 'validation' / 'source-review-report.yaml'}")
 
 
 @sources_app.command("review")

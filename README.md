@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.3.8
+Current version: 0.3.9
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -43,7 +43,10 @@ Phase 1 complete:
 - CSV, SQLite, and JSON data profiling under `outputs/data-profiles/`
 - M.Phil and PhD research stage templates
 - Research question approve, reject, archive, list, and deterministic readiness-check workflows
-- Manual claim ledger and citation gap reports
+- Research question templates for all project types and local warning thresholds
+- Manual claim ledger, claim status workflow, claim-source validation, and citation gap reports
+- Source notes, manual tags, and source review reports
+- Structured decisions, terminology, supervisor/stakeholder feedback, context changelog, and local timeline reports
 - Artefact registry records with linked sources, linked research questions, and review flags
 - Deterministic artefact creation for source summaries, literature review matrices, claim-evidence tables, research question briefs, and data profile summaries
 - Artefact review statuses, artefact dependency validation, and offline evidence bundle export
@@ -208,6 +211,7 @@ researchboss data status [--workspace <path>]
 researchboss report [--workspace <path>]
 researchboss watch [--workspace <path>]
 researchboss health [--workspace <path>]
+researchboss timeline [--workspace <path>]
 researchboss backup [--workspace <path>] [--include-originals]
 researchboss backup-inspect <backup.zip> [--workspace <path>]
 researchboss export-evidence [--workspace <path>]
@@ -232,6 +236,9 @@ researchboss sources review [--workspace <path>]
 researchboss sources accept <source-id> --workspace <path>
 researchboss sources maybe <source-id> --workspace <path>
 researchboss sources ignore <source-id> --reason "Reason" --workspace <path>
+researchboss sources note <source-id> "Note" [--workspace <path>]
+researchboss sources tag <source-id> <tag> [--workspace <path>]
+researchboss sources report [--workspace <path>]
 researchboss rqs list [--workspace <path>]
 researchboss rqs check [<rq-id>] [--workspace <path>]
 researchboss rqs approve <rq-id> [--workspace <path>]
@@ -240,6 +247,12 @@ researchboss rqs archive <rq-id> --reason "Reason" [--workspace <path>]
 researchboss claims add "Claim text" [--source <source-id>] [--workspace <path>]
 researchboss claims list [--workspace <path>]
 researchboss claims gaps [--workspace <path>]
+researchboss claims status <claim-id> <status> [--workspace <path>]
+researchboss claims validate [--workspace <path>]
+researchboss decisions add "Decision" [--reason "Reason"] [--workspace <path>]
+researchboss terminology add <term> "Definition" [--workspace <path>]
+researchboss feedback add "Feedback" [--source "Name"] [--workspace <path>]
+researchboss context add "Change note" [--workspace <path>]
 researchboss artefacts register "Title" --path <path> [--type report] [--workspace <path>]
 researchboss artefacts create source-summary-report [--workspace <path>]
 researchboss artefacts create literature-review-matrix [--workspace <path>] [--rq <rq-id>]

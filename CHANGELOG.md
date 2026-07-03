@@ -4,6 +4,10 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Bumped project version to 0.3.9.
+- Completed current Phase 4 offline deterministic TODO items that do not require AI or API implementation.
+- Added research question templates for all project types, warning thresholds, source notes/tags, source review reports, claim status workflow, claim-source validation, structured decisions, terminology, feedback, context changelog, and local timeline reports.
+- Kept pending AI/API TODO items color-marked separately.
 - Bumped project version to 0.3.8.
 - Completed current Phase 1, Phase 2, and Phase 3 offline deterministic TODO items that do not require AI or API implementation.
 - Added scan provider validation, workspace health reports, backup dry-run inspection, DOI/citation consistency validation, metadata duplicate reports, converted-text keyword indexing, evidence bundle export, artefact review statuses, and artefact dependency checks.

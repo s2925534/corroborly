@@ -1,6 +1,6 @@
 # ResearchBoss Detailed Roadmap
 
-Project version: 0.3.8
+Project version: 0.3.9
 
 Last updated: 2026-07-03
 
@@ -33,8 +33,10 @@ Implemented:
 - Deterministic artefact creation for source summaries, literature review matrices, claim-evidence tables, research question briefs, and data profile summaries.
 - Artefact review status, artefact dependency validation, and evidence bundle export.
 - M.Phil and PhD stage templates.
-- Research question list, approve, reject, archive, and deterministic readiness-check workflows.
-- Manual claim ledger and citation gap detection.
+- Research question templates, list, approve, reject, archive, and deterministic readiness-check workflows.
+- Source notes, manual source tags, and source review reports.
+- Manual claim ledger, claim statuses, claim-source validation, and citation gap detection.
+- Structured decision log, terminology glossary, supervisor/stakeholder feedback, context changelog, and local timeline reports.
 - Local Markdown workspace reports.
 - One-shot watch reports for unregistered source files.
 - Local workspace backups.
@@ -228,18 +230,18 @@ Implemented:
 - Init-time research questions.
 - Draft and approved separation.
 - Optional subquestions.
+- Research question templates for all project types.
 - M.Phil and PhD stage templates.
 - Stage statuses.
 - RQ list, approve, reject, and archive commands.
 - Deterministic RQ readiness checks for question form, scope signals, vague wording, possible multiple questions, context markers, subquestion alignment, and project-level hints.
 - Local RQ readiness reports under `outputs/validation/research-question-readiness.yaml`.
-
-Future:
-
-- Richer RQ templates for all project types.
 - Warning thresholds.
 - Source notes, manual source tags, source review reports, and claim status workflows.
 - Decision log, terminology glossary, supervisor/stakeholder feedback, context changelog, and local timeline commands.
+
+Future:
+
 - AI-assisted RQ strength, novelty, field usefulness, contribution, and evidence-quality review after privacy-boundary tests exist.
 
 ### Phase 5: Optional OpenAI Features
@@ -516,53 +518,32 @@ Missing:
 
 ## 15. Immediate Next Steps
 
-Phase 1, Phase 2, and Phase 3 offline deterministic work is complete for the current roadmap. Remaining work starts with Phase 4 research workflow refinement, then later API, AI, UI, and packaging phases.
+Phase 1 through Phase 4 offline deterministic work is complete for the current roadmap. Remaining work is either Phase 2 enhancement, API/backend work, AI work, UI preparation, or packaging.
 
-1. Add source review reports.
-   - Why: reviewers need one local report of pending, accepted, maybe, ignored, duplicates, failed conversions, and metadata gaps.
-   - Likely files: reports engine, sources engine, CLI, tests.
-   - Tests: mixed-status workspace report.
-   - Complexity: medium.
-   - Phase: 4 refinement.
-
-2. Add source notes and manual source tags.
-   - Why: offline review needs human annotations and deterministic categories without modifying original files.
-   - Likely files: new source-notes/tags engine module, workspace files, CLI, tests.
-   - Tests: add/list/update notes and tags.
-   - Complexity: medium.
-   - Phase: 4 refinement.
-
-3. Add claim status and claim-source validation.
-   - Why: claims should distinguish supported, needs evidence, rejected, and needs review, and should link only to accepted sources.
-   - Likely files: `claims.py`, CLI, reports, tests.
-   - Tests: invalid source links, ignored source links, status transitions.
-   - Complexity: medium.
-   - Phase: 4 refinement.
-
-4. Add structured project-log commands.
-   - Why: decisions, terminology, supervisor feedback, context changes, and timelines should be maintained locally and consistently.
-   - Likely files: new decisions/terminology/feedback/changelog engine modules, CLI, tests.
-   - Tests: add/list/update workflows.
-   - Complexity: medium.
-   - Phase: 4 refinement.
-
-5. Add richer PDF extraction using an optional local dependency.
+1. Add richer PDF extraction using an optional local dependency.
    - Why: current PDF support is intentionally conservative for simple uncompressed streams.
    - Likely files: conversion engine, docs, tests.
    - Tests: realistic PDF fixture.
    - Complexity: medium.
    - Phase: 2 enhancement, not blocking Phase 2 completion.
 
-6. Start FastAPI local backend contracts.
+2. Start FastAPI local backend contracts.
    - Why: deterministic engine contracts now exist for CLI reuse.
    - Likely files: `researchboss/api`, tests, docs.
    - Tests: API route tests.
    - Complexity: high.
    - Phase: 6.
 
+3. Design AI privacy-boundary tests before AI implementation.
+   - Why: AI features must not upload full documents or datasets unless explicitly opted in by the user.
+   - Likely files: future AI engine contracts, tests, docs.
+   - Tests: key handling, context limits, no key logging, no default uploads.
+   - Complexity: medium.
+   - Phase: 5.
+
 ## 16. Recommended Resume Point
 
-Resume with Phase 4 research workflow refinement: source review reports, source notes/tags, claim status validation, and structured project-log commands. Phase 1, Phase 2, and Phase 3 offline deterministic work is complete for the current roadmap. AI and API work remain intentionally separated until their contracts and privacy-boundary tests are designed.
+Resume with either a Phase 2 PDF extraction enhancement, Phase 6 FastAPI local backend contracts, or Phase 5 AI privacy-boundary tests. Phase 1 through Phase 4 offline deterministic work is complete for the current roadmap. AI and API work remain intentionally separated until their contracts and privacy-boundary tests are designed.
 
 ## 17. Maintenance Rule
 

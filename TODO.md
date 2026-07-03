@@ -80,22 +80,22 @@
 
 ## Phase 4: Research Questions and Stages
 
-- [ ] Add richer research question templates for M.Phil, PhD, Other academic research, Industry research, and Custom.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add richer research question templates for M.Phil, PhD, Other academic research, Industry research, and Custom.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add M.Phil and PhD stage templates.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add stage statuses.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add research question candidate, approval, rejection, and archive workflows beyond init-time capture.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add deterministic research question readiness checks without claiming novelty or contribution strength.
-- [ ] Add warning thresholds without hard limits by default.
-- [ ] Add source notes commands for local per-source notes.
-- [ ] Add manual source tags for deterministic review categories.
-- [ ] Add claim status workflow for supported, needs evidence, rejected, and needs review.
-- [ ] Add claim-source validation to ensure claims link only to accepted sources.
-- [ ] Add source review reports for pending, accepted, maybe, ignored, duplicates, and failed files.
-- [ ] Add decision log commands for structured project decisions.
-- [ ] Add terminology glossary commands.
-- [ ] Add supervisor or stakeholder feedback commands.
-- [ ] Add context changelog commands.
-- [ ] Add local timeline report from logs, decisions, scans, conversions, and RQ changes.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add warning thresholds without hard limits by default.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add source notes commands for local per-source notes.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add manual source tags for deterministic review categories.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add claim status workflow for supported, needs evidence, rejected, and needs review.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add claim-source validation to ensure claims link only to accepted sources.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add source review reports for pending, accepted, maybe, ignored, duplicates, and failed files.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add decision log commands for structured project decisions.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add terminology glossary commands.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add supervisor or stakeholder feedback commands.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add context changelog commands.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add local timeline report from logs, decisions, scans, conversions, and RQ changes.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add tests for research question and stage workflows.
 
 ## Phase 5: Optional OpenAI Features
@@ -120,7 +120,7 @@
 ## Phase 7: Cross-Platform UI Preparation
 
 - [ ] Document the desktop, web, and mobile UI strategy.
-- [ ] Define a clear API contract.
+- [ ] <span style="color: #1565c0; font-weight: 600;">Define</span> a clear API contract.
 - [ ] Add a frontend folder or explicit planned UI structure.
 - [ ] Keep UI logic out of the core engine.
 

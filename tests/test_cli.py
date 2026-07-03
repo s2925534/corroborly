@@ -552,6 +552,41 @@ def test_cli_claims_add_list_and_gaps(tmp_path: Path) -> None:
     assert (workspace / "outputs" / "validation" / "citation-gaps.yaml").is_file()
 
 
+def test_cli_phase4_local_review_commands(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "paper.txt").write_text("content", encoding="utf-8")
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    assert runner.invoke(app, ["scan", "--workspace", str(workspace), "--source", str(source_root), "--quiet"]).exit_code == 0
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+
+    commands = [
+        ["sources", "note", source_id, "Useful source"],
+        ["sources", "tag", source_id, "methodology"],
+        ["sources", "report"],
+        ["claims", "add", "Claim text", "--source", source_id],
+        ["claims", "status", "claim-001", "needs_evidence"],
+        ["claims", "validate"],
+        ["decisions", "add", "Use accepted sources only", "--reason", "Evidence policy"],
+        ["terminology", "add", "construct", "A concept being studied"],
+        ["feedback", "add", "Narrow scope", "--source", "Supervisor"],
+        ["context", "add", "Updated research context"],
+        ["timeline"],
+    ]
+    for command in commands:
+        result = runner.invoke(app, [*command, "--workspace", str(workspace), "--quiet"])
+        assert result.exit_code == 0, result.output
+
+    source = read_yaml(workspace / "source-register.yaml")["sources"][0]
+    assert source["notes"] == "Useful source"
+    assert source["tags"] == ["methodology"]
+    assert read_yaml(workspace / "claims-ledger.yaml")["claims"][0]["status"] == "needs_evidence"
+    assert (workspace / "outputs" / "validation" / "source-review-report.yaml").is_file()
+    assert (workspace / "outputs" / "validation" / "claim-source-validation.yaml").is_file()
+    assert (workspace / "outputs" / "reports" / "timeline.yaml").is_file()
+
+
 def test_cli_report_generates_workspace_report(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")

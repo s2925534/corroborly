@@ -11,6 +11,7 @@ from researchboss.engine.workspace import (
     find_default_zotero_storage,
     infer_source_mode,
     init_workspace,
+    research_question_templates,
     zotero_storage_candidates,
 )
 
@@ -86,6 +87,7 @@ def test_init_workspace_creates_expected_files_and_dirs(tmp_path: Path) -> None:
     }
     assert context["citation"] == {"style": "Not sure", "custom_style": None}
     assert context["data"] == {"expects_csv_or_sqlite": "not sure"}
+    assert context["warning_thresholds"]["draft_research_questions"] == 10
     assert context["privacy"]["local_first"] is True
     assert context["privacy"]["do_not_upload_full_documents"] is True
     assert context["privacy"]["no_external_search_mvp"] is True
@@ -206,6 +208,13 @@ def test_init_workspace_writes_research_questions_and_candidates(tmp_path: Path)
             "subquestions": [],
         }
     ]
+    assert candidates["templates"]["project_type"] == "PhD"
+    assert "contribute" in candidates["templates"]["items"][0]
+
+
+def test_research_question_templates_cover_all_project_types() -> None:
+    for project_type in ["M.Phil", "PhD", "Other academic research", "Industry research", "Custom"]:
+        assert research_question_templates(project_type)
 
 
 def test_default_documents_dir_uses_home_documents(tmp_path: Path) -> None:

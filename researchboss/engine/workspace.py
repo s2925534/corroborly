@@ -50,6 +50,33 @@ PHD_STAGES = [
     "review",
     "submission",
 ]
+RQ_TEMPLATES = {
+    "M.Phil": [
+        "How does [phenomenon] operate within [bounded context]?",
+        "What factors shape [outcome] among [population/source set]?",
+        "To what extent does [factor] affect [outcome] in [context]?",
+    ],
+    "PhD": [
+        "How does [phenomenon] contribute to [theory/method/problem] within [context]?",
+        "What explains [under-researched outcome] across [bounded source set/context]?",
+        "In what ways can [method/theory] extend understanding of [research problem]?",
+    ],
+    "Other academic research": [
+        "What is the relationship between [factor] and [outcome] in [context]?",
+        "How is [topic] represented or measured across [source set]?",
+        "Which factors are associated with [outcome] in [context]?",
+    ],
+    "Industry research": [
+        "What operational factors affect [outcome] for [stakeholder/team]?",
+        "How does [process/tool] influence [business/research outcome] in [context]?",
+        "Which evidence supports decisions about [problem/opportunity]?",
+    ],
+    "Custom": [
+        "How does [topic] relate to [outcome] in [context]?",
+        "What evidence is needed to evaluate [question/problem]?",
+        "Which sources or data can answer [question/problem]?",
+    ],
+}
 
 
 def default_documents_dir(home: Optional[Path] = None) -> Path:
@@ -201,6 +228,10 @@ def research_stage_template(project_type: str) -> list[dict[str, Any]]:
     return [{"id": f"stage-{index:02d}", "name": name, "status": "not_started"} for index, name in enumerate(names, 1)]
 
 
+def research_question_templates(project_type: str) -> list[str]:
+    return list(RQ_TEMPLATES.get(project_type, RQ_TEMPLATES["Custom"]))
+
+
 def init_workspace(
     workspace: Path,
     *,
@@ -255,6 +286,12 @@ def init_workspace(
             },
             "citation": {"style": citation_style, "custom_style": custom_citation_style},
             "data": {"expects_csv_or_sqlite": expects_data_files},
+            "warning_thresholds": {
+                "draft_research_questions": 10,
+                "maybe_sources": 25,
+                "unsupported_claims": 5,
+                "failed_conversions": 1,
+            },
             "privacy": {
                 "local_first": True,
                 "do_not_upload_full_documents": prevent_full_document_uploads,
@@ -286,7 +323,14 @@ def init_workspace(
     )
     write_yaml(
         workspace / WORKSPACE_FILES.research_question_candidates,
-        {"version": 1, "candidates": draft_questions},
+        {
+            "version": 1,
+            "templates": {
+                "project_type": project_type,
+                "items": research_question_templates(project_type),
+            },
+            "candidates": draft_questions,
+        },
     )
     write_yaml(workspace / WORKSPACE_FILES.rejected_research_questions, {"version": 1, "rejected": []})
 
