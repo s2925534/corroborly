@@ -16,3 +16,6 @@ build/
 !/workspaces/.keep
 /tedt/
 /Container-Readiness-Framework-for-Port-Logistics--A-Deterministic-and-Explainable-Model-for-Operational-Eligibility/
+oldResearchProject
+pdf-merge
+.DS_Store
