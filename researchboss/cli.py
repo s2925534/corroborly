@@ -18,6 +18,7 @@ from researchboss.engine.ai import (
     ai_assisted_review,
     ai_novelty_assessment,
     ai_research_question_assessment,
+    ai_workspace_report,
     build_safe_context,
     openai_credentials,
     openai_readiness,
@@ -781,6 +782,154 @@ def ai_review(
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
         console.print("[yellow]Human review is required before using this output.[/yellow]")
+
+
+def _run_ai_workspace_report(
+    *,
+    workspace: Optional[Path],
+    ai: bool,
+    kind: str,
+    output_name: str,
+    max_sources: int,
+    max_excerpt_chars: int,
+    log_level: str,
+    quiet: bool,
+) -> None:
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["ai", kind], ws, log_level)
+    try:
+        require_ai_flag(ai)
+        report = ai_workspace_report(
+            ws,
+            openai_credentials(ws),
+            kind=kind,
+            max_sources=max_sources,
+            max_excerpt_chars=max_excerpt_chars,
+        )
+    except OpenAiError as e:
+        logger.error("AI workspace report failed", operation=f"ai_{kind}", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    output_path = ws / "outputs" / "validation" / output_name
+    write_yaml(output_path, report)
+    logger.info("Wrote AI workspace report", operation=f"ai_{kind}", kind=kind, source_count=report["source_count"])
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print("[yellow]Human review is required before using this output.[/yellow]")
+
+
+@ai_app.command("corpus-summary")
+def ai_corpus_summary(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI corpus summary."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate an AI corpus summary from safe context only."""
+    _run_ai_workspace_report(
+        workspace=workspace,
+        ai=ai,
+        kind="corpus_summary",
+        output_name="openai-corpus-summary.yaml",
+        max_sources=max_sources,
+        max_excerpt_chars=max_excerpt_chars,
+        log_level=log_level,
+        quiet=quiet,
+    )
+
+
+@ai_app.command("claim-check")
+def ai_claim_check(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI claim-check assistance."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate AI claim-checking assistance without changing claim statuses."""
+    _run_ai_workspace_report(
+        workspace=workspace,
+        ai=ai,
+        kind="claim_checking",
+        output_name="openai-claim-checking.yaml",
+        max_sources=max_sources,
+        max_excerpt_chars=max_excerpt_chars,
+        log_level=log_level,
+        quiet=quiet,
+    )
+
+
+@ai_app.command("citation-gaps")
+def ai_citation_gaps(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI citation-gap recommendations."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate AI citation-gap recommendations from safe context only."""
+    _run_ai_workspace_report(
+        workspace=workspace,
+        ai=ai,
+        kind="citation_gaps",
+        output_name="openai-citation-gaps.yaml",
+        max_sources=max_sources,
+        max_excerpt_chars=max_excerpt_chars,
+        log_level=log_level,
+        quiet=quiet,
+    )
+
+
+@ai_app.command("artefact-cross-reference")
+def ai_artefact_cross_reference(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI artefact cross-reference."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate AI artefact cross-reference review from registry metadata and safe context."""
+    _run_ai_workspace_report(
+        workspace=workspace,
+        ai=ai,
+        kind="artefact_cross_reference",
+        output_name="openai-artefact-cross-reference.yaml",
+        max_sources=max_sources,
+        max_excerpt_chars=max_excerpt_chars,
+        log_level=log_level,
+        quiet=quiet,
+    )
+
+
+@ai_app.command("source-relevance")
+def ai_source_relevance(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI source relevance recommendations."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate AI source relevance recommendations without changing source statuses."""
+    _run_ai_workspace_report(
+        workspace=workspace,
+        ai=ai,
+        kind="source_relevance",
+        output_name="openai-source-relevance.yaml",
+        max_sources=max_sources,
+        max_excerpt_chars=max_excerpt_chars,
+        log_level=log_level,
+        quiet=quiet,
+    )
 
 
 @search_app.command("plan")

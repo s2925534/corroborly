@@ -113,6 +113,22 @@ def test_cli_search_scopus_requires_external_search_flag(tmp_path: Path) -> None
     assert result.exit_code == 2, result.output
 
 
+def test_cli_ai_workspace_report_commands_require_ai_flag(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    commands = [
+        ["ai", "corpus-summary"],
+        ["ai", "claim-check"],
+        ["ai", "citation-gaps"],
+        ["ai", "artefact-cross-reference"],
+        ["ai", "source-relevance"],
+    ]
+    for command in commands:
+        result = runner.invoke(app, [*command, "--workspace", str(workspace), "--quiet"])
+        assert result.exit_code == 2, result.output
+
+
 def test_cli_ai_context_preview_writes_local_context_without_network(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     source_root = tmp_path / "sources"

@@ -465,3 +465,95 @@ def ai_research_question_assessment(
         "response_id": response.get("id") if isinstance(response, dict) else None,
         "assessment": assessment_text,
     }
+
+
+AI_WORKSPACE_REPORTS = {
+    "corpus_summary": {
+        "title": "AI corpus summary",
+        "sections": "Scope, Main Themes, Evidence Signals, Gaps, Human Review Required",
+    },
+    "claim_checking": {
+        "title": "AI claim-checking assistance",
+        "sections": "Claim Coverage, Supported Signals, Missing Evidence, Risky Claims, Human Review Required",
+    },
+    "citation_gaps": {
+        "title": "AI citation gap recommendations",
+        "sections": "Likely Citation Gaps, Candidate Source Links, Missing Source Types, Follow-up Checks, Human Review Required",
+    },
+    "artefact_cross_reference": {
+        "title": "AI artefact cross-reference review",
+        "sections": "Artefact Coverage, Source Links, Research Question Links, Evidence Gaps, Human Review Required",
+    },
+    "source_relevance": {
+        "title": "AI source relevance recommendations",
+        "sections": "Relevant Source Signals, Low-Relevance Risks, Suggested Review Tags, Follow-up Checks, Human Review Required",
+    },
+}
+
+
+def _workspace_ai_payload(workspace: Path, context: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "safe_context": context,
+        "research_questions": {
+            "approved": read_yaml(workspace / "research-questions.yaml").get("research_questions", []),
+            "candidates": read_yaml(workspace / "research-question-candidates.yaml").get("candidates", []),
+        },
+        "claims": read_yaml(workspace / "claims-ledger.yaml").get("claims", []),
+        "artefacts": read_yaml(workspace / "artefact-registry.yaml").get("artefacts", []),
+    }
+
+
+def _workspace_report_prompt(kind: str, payload: dict[str, Any]) -> str:
+    spec = AI_WORKSPACE_REPORTS[kind]
+    return (
+        f"You are assisting with {spec['title']} for a local-first, evidence-first research workspace.\n"
+        "Use only the supplied safe context and workspace state. Do not claim certainty, do not modify statuses, "
+        "and cite source IDs when referring to sources. Return concise markdown with sections: "
+        f"{spec['sections']}.\n\n"
+        f"Workspace payload JSON:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
+
+
+def ai_workspace_report(
+    workspace: Path,
+    credentials: OpenAiCredentials,
+    *,
+    kind: str,
+    max_sources: int = 10,
+    max_excerpt_chars: int = 1200,
+    opener: Callable[[Request], Any] | None = None,
+) -> dict[str, Any]:
+    if kind not in AI_WORKSPACE_REPORTS:
+        allowed = ", ".join(sorted(AI_WORKSPACE_REPORTS))
+        raise OpenAiError(f"Invalid AI workspace report kind: {kind}. Expected one of: {allowed}")
+    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
+    payload = _workspace_ai_payload(workspace, context)
+    model = default_openai_model(workspace)
+    response = openai_post(
+        "responses",
+        credentials,
+        {
+            "model": model,
+            "input": _workspace_report_prompt(kind, payload),
+        },
+        opener=opener,
+    )
+    text = extract_response_text(response)
+    return {
+        "version": 1,
+        "kind": kind,
+        "provider": "openai",
+        "model": model,
+        "ai_used": True,
+        "requires_user_review": True,
+        "status_changes_applied": False,
+        "safe_context_policy": context["policy"],
+        "limits": context["limits"],
+        "source_count": len(context["sources"]),
+        "claim_count": len(payload["claims"]),
+        "artefact_count": len(payload["artefacts"]),
+        "research_question_count": len(payload["research_questions"]["approved"])
+        + len(payload["research_questions"]["candidates"]),
+        "response_id": response.get("id") if isinstance(response, dict) else None,
+        "report": text,
+    }

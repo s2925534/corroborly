@@ -11,6 +11,7 @@ from researchboss.engine.ai import (
     ai_assisted_review,
     ai_novelty_assessment,
     ai_research_question_assessment,
+    ai_workspace_report,
     build_safe_context,
     extract_response_text,
     load_dotenv_values,
@@ -315,3 +316,46 @@ def test_ai_research_question_assessment_rejects_unknown_question(tmp_path: Path
 
     with pytest.raises(OpenAiError, match="Unknown research question"):
         ai_research_question_assessment(workspace, OpenAiCredentials(api_key="sk-secret"), rq_id="rq-missing")
+
+
+def test_ai_workspace_report_uses_safe_context_and_does_not_change_statuses(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("bounded report context", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+    set_source_status(workspace, source_id=source_id, new_status="accepted")
+    convert_sources(workspace, status="accepted")
+
+    def opener(request: Request):
+        body = json.loads(request.data.decode("utf-8"))
+        assert "bounded report context" in body["input"]
+        assert str(source_file) not in body["input"]
+        assert "do not modify statuses" in body["input"].lower()
+        return FakeResponse({"id": "resp_report", "output_text": "Corpus summary"})
+
+    report = ai_workspace_report(
+        workspace,
+        OpenAiCredentials(api_key="sk-secret"),
+        kind="corpus_summary",
+        max_sources=1,
+        max_excerpt_chars=100,
+        opener=opener,
+    )
+
+    assert report["kind"] == "corpus_summary"
+    assert report["status_changes_applied"] is False
+    assert report["requires_user_review"] is True
+    assert report["report"] == "Corpus summary"
+    assert read_yaml(workspace / "source-register.yaml")["sources"][0]["status"] == "accepted"
+
+
+def test_ai_workspace_report_rejects_unknown_kind(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    with pytest.raises(OpenAiError, match="Invalid AI workspace report kind"):
+        ai_workspace_report(workspace, OpenAiCredentials(api_key="sk-secret"), kind="unknown")
