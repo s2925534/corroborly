@@ -9,6 +9,7 @@ from typing import Any
 from researchboss.core.yamlio import write_yaml
 from researchboss.engine.conversion import CONVERTIBLE_EXTENSIONS, extract_text
 from researchboss.engine.document_targets import DocumentTarget, resolve_document_target
+from researchboss.engine.references import apa7_reference
 from researchboss.engine.sources import list_sources
 
 
@@ -82,6 +83,7 @@ def validate_document(
         "missing_citations": _missing_citations(sentence_checks),
         "candidate_supporting_sources": _candidate_supporting_sources(comparisons),
         "evidence_confidence": _evidence_confidence(comparisons),
+        "references": _references(comparisons),
         "human_review_checklist": _human_review_checklist(),
         "sources": comparisons,
         "sentence_checks": sentence_checks,
@@ -354,6 +356,30 @@ def _evidence_confidence(comparisons: list[dict[str, Any]]) -> list[dict[str, An
         row["confidence_score"] = _confidence_score(row)
         confidence_rows.append(row)
     return confidence_rows
+
+
+def _references(comparisons: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    accepted = []
+    candidates = []
+    for source in comparisons:
+        row = {
+            "source_id": source.get("source_id"),
+            "status": source.get("status"),
+            "reference": apa7_reference(
+                {
+                    "authors": source.get("authors"),
+                    "year": source.get("year"),
+                    "title": source.get("title"),
+                    "publication_venue": source.get("publication_venue"),
+                    "doi": source.get("doi"),
+                }
+            ),
+        }
+        if source.get("status") == "accepted":
+            accepted.append(row)
+        else:
+            candidates.append(row)
+    return {"accepted_workspace_evidence": accepted, "candidate_or_explicit_sources": candidates}
 
 
 def _claim_relevance(source: dict[str, Any]) -> dict[str, Any]:
@@ -691,6 +717,34 @@ def _markdown_report(report: dict[str, Any]) -> str:
             )
             + " |"
         )
+    lines.extend(
+        [
+            "",
+            "## References",
+            "",
+            "### Accepted Workspace Evidence",
+            "",
+        ]
+    )
+    accepted_references = report["references"]["accepted_workspace_evidence"]
+    if accepted_references:
+        for reference in accepted_references:
+            lines.append(f"- {reference['reference']}")
+    else:
+        lines.append("- None.")
+    lines.extend(
+        [
+            "",
+            "### Candidate Or Explicit Sources",
+            "",
+        ]
+    )
+    candidate_references = report["references"]["candidate_or_explicit_sources"]
+    if candidate_references:
+        for reference in candidate_references:
+            lines.append(f"- {reference['reference']}")
+    else:
+        lines.append("- None.")
     lines.extend(
         [
             "",

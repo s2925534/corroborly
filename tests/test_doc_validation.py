@@ -77,11 +77,16 @@ def test_validate_document_compares_target_to_accepted_and_explicit_sources(tmp_
     assert report["evidence_confidence"][1]["confidence_score"]["unknown_component_count"] > 0
     assert "citation_strength" in report["evidence_confidence"][1]["confidence_score"]["unknown_components"]
     assert "publication_venue" in report["evidence_confidence"][1]["metadata_completeness"]["unknown_fields"]
+    assert report["references"]["accepted_workspace_evidence"][0]["reference"].startswith("A. Author")
+    assert "https://doi.org/10.1234/example" in report["references"]["accepted_workspace_evidence"][0]["reference"]
+    assert report["references"]["candidate_or_explicit_sources"][0]["reference"].startswith("Unknown author")
     assert report["human_review_checklist"]
     assert [source["source_id"] for source in report["sources"]] == ["source-001", "explicit-source-001"]
     assert report["sources"][0]["provider"] == "zotero_storage"
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "## Strengths" in markdown
     assert "## Evidence Confidence Factors" in markdown
+    assert "## References" in markdown
+    assert "### Accepted Workspace Evidence" in markdown
     assert "## Human Review Checklist" in markdown
     assert "pending" not in markdown

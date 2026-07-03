@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.ai import load_dotenv_values
+from researchboss.engine.references import apa7_reference
 
 
 SCOPUS_SEARCH_URL = "https://api.elsevier.com/content/search/scopus"
@@ -1013,6 +1014,9 @@ def write_high_signal_candidate_report(workspace: Path, *, limit: int = 50) -> d
                 "linked_research_questions": rq_links,
                 "doi": candidate.get("doi"),
                 "eid": candidate.get("eid"),
+                "authors": candidate.get("authors") or [],
+                "source_title": candidate.get("source_title"),
+                "document_type": candidate.get("document_type"),
                 "queries": candidate.get("queries") or [],
             }
         )
@@ -1040,6 +1044,24 @@ def write_high_signal_candidate_report(workspace: Path, *, limit: int = 50) -> d
             "metadata_completeness_desc",
         ],
         "candidates": rows[: max(0, limit)],
+        "references": {
+            "accepted_workspace_evidence": [],
+            "external_candidate_sources": [
+                {
+                    "candidate_id": candidate.get("candidate_id"),
+                    "reference": apa7_reference(
+                        {
+                            "authors": candidate.get("authors") or [],
+                            "year": candidate.get("year"),
+                            "title": candidate.get("title"),
+                            "source_title": candidate.get("source_title"),
+                            "doi": candidate.get("doi"),
+                        }
+                    ),
+                }
+                for candidate in rows[: max(0, limit)]
+            ],
+        },
     }
     write_yaml(high_signal_candidate_report_path(workspace), report)
     return report

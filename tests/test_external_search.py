@@ -317,8 +317,10 @@ sources:
                             "dc:title": "Container evidence supports claim review",
                             "citedby-count": "30",
                             "prism:coverDate": "2024-01-01",
+                            "prism:publicationName": "Journal of Evidence",
                             "prism:doi": "10.1000/strong",
                             "eid": "2-s2.0-strong",
+                            "author": [{"authname": "Researcher, A.", "authid": "123"}],
                         },
                         {
                             "dc:title": "Old filtered paper",
@@ -345,6 +347,9 @@ sources:
     assert filtered["candidates"][0]["metadata_flags"][0]["kind"] == "missing_doi"
     high_signal = read_yaml(Path(report["metrics"]["high_signal_report_path"]))
     assert high_signal["candidates"][0]["rq_coverage_count"] == 1
+    assert high_signal["references"]["accepted_workspace_evidence"] == []
+    assert high_signal["references"]["external_candidate_sources"][0]["reference"].startswith("Researcher, A.")
+    assert "https://doi.org/10.1000/strong" in high_signal["references"]["external_candidate_sources"][0]["reference"]
     duplicates = read_yaml(Path(report["metrics"]["candidate_duplicates_path"]))
     assert duplicates["source_match_count"] == 1
     evidence = read_yaml(Path(report["metrics"]["evidence_validation_path"]))
