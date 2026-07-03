@@ -4,6 +4,7 @@ import json
 import os
 import re
 import hashlib
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import product
@@ -77,6 +78,46 @@ class SearchThresholds:
             max_results_per_query=max(1, min(max_results_per_query, 200)),
             low_result_threshold=max(0, low_result_threshold),
         )
+
+
+@dataclass(frozen=True)
+class SearchBudgets:
+    max_api_calls: int = 1
+    max_generated_queries: int = 20
+    max_refinement_rounds: int = 1
+    max_result_pages: int = 1
+    max_result_count: int = 200
+    max_elapsed_seconds: int = 300
+
+    @classmethod
+    def from_options(
+        cls,
+        *,
+        max_api_calls: int = 1,
+        max_generated_queries: int = 20,
+        max_refinement_rounds: int = 1,
+        max_result_pages: int = 1,
+        max_result_count: int = 200,
+        max_elapsed_seconds: int = 300,
+    ) -> "SearchBudgets":
+        return cls(
+            max_api_calls=max(0, max_api_calls),
+            max_generated_queries=max(0, max_generated_queries),
+            max_refinement_rounds=max(0, max_refinement_rounds),
+            max_result_pages=max(0, max_result_pages),
+            max_result_count=max(0, max_result_count),
+            max_elapsed_seconds=max(0, max_elapsed_seconds),
+        )
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "max_api_calls": self.max_api_calls,
+            "max_generated_queries": self.max_generated_queries,
+            "max_refinement_rounds": self.max_refinement_rounds,
+            "max_result_pages": self.max_result_pages,
+            "max_result_count": self.max_result_count,
+            "max_elapsed_seconds": self.max_elapsed_seconds,
+        }
 
 
 def require_external_search_flag(enabled: bool) -> None:
@@ -392,6 +433,30 @@ def batch_search_summary_path(workspace: Path) -> Path:
     return workspace / "outputs" / "external-search" / "scopus-batch-run-summary.yaml"
 
 
+def auto_refine_plan_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "recommendations" / "external-search-refine-plan.yaml"
+
+
+def filtered_candidate_log_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "external-search" / "scopus-filtered-candidates.yaml"
+
+
+def high_signal_candidate_report_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "recommendations" / "external-high-signal-candidates.yaml"
+
+
+def external_candidate_duplicates_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "validation" / "external-candidate-duplicates.yaml"
+
+
+def external_evidence_validation_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "validation" / "external-search-evidence-validation.yaml"
+
+
+def external_run_comparison_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "validation" / "external-search-run-comparison.yaml"
+
+
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
         return int(str(value).strip())
@@ -409,6 +474,44 @@ def _truthy_open_access(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "y", "open", "openaccess"}
+
+
+def _normalize_doi(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    text = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", text)
+    text = re.sub(r"^doi:\s*", "", text)
+    match = re.search(r"10\.\d{4,9}/[-._;()/:a-z0-9]+", text, flags=re.IGNORECASE)
+    return match.group(0).rstrip(".,; )").lower() if match else None
+
+
+def _normalize_title(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _text_terms(value: Any) -> set[str]:
+    stop = {
+        "about",
+        "against",
+        "among",
+        "and",
+        "from",
+        "into",
+        "paper",
+        "research",
+        "that",
+        "this",
+        "with",
+        "without",
+    }
+    return {
+        term
+        for term in re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", str(value or "").lower())
+        if term not in stop
+    }
 
 
 def _authors_from_entry(entry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -538,6 +641,67 @@ def candidate_passes_thresholds(candidate: dict[str, Any], thresholds: SearchThr
     return True
 
 
+def threshold_failure_reasons(candidate: dict[str, Any], thresholds: SearchThresholds) -> list[dict[str, Any]]:
+    reasons = []
+    citation_count = int(candidate.get("citation_count") or 0)
+    if citation_count < thresholds.min_citations:
+        reasons.append(
+            {
+                "kind": "below_min_citations",
+                "field": "citation_count",
+                "observed": citation_count,
+                "threshold": thresholds.min_citations,
+            }
+        )
+    year = candidate.get("year")
+    if thresholds.year_from is not None and not year:
+        reasons.append(
+            {
+                "kind": "missing_year",
+                "field": "year",
+                "observed": None,
+                "threshold": f">={thresholds.year_from}",
+            }
+        )
+    elif thresholds.year_from is not None and int(year) < thresholds.year_from:
+        reasons.append(
+            {
+                "kind": "before_year_from",
+                "field": "year",
+                "observed": int(year),
+                "threshold": thresholds.year_from,
+            }
+        )
+    if thresholds.year_to is not None and not year:
+        reasons.append(
+            {
+                "kind": "missing_year",
+                "field": "year",
+                "observed": None,
+                "threshold": f"<={thresholds.year_to}",
+            }
+        )
+    elif thresholds.year_to is not None and int(year) > thresholds.year_to:
+        reasons.append(
+            {
+                "kind": "after_year_to",
+                "field": "year",
+                "observed": int(year),
+                "threshold": thresholds.year_to,
+            }
+        )
+    if thresholds.open_access_only and not candidate.get("open_access"):
+        reasons.append(
+            {
+                "kind": "not_open_access",
+                "field": "open_access",
+                "observed": bool(candidate.get("open_access")),
+                "threshold": True,
+            }
+        )
+    return reasons
+
+
 def score_scopus_entries(entries: list[dict[str, Any]], thresholds: SearchThresholds) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     scored = [score_scopus_entry(entry) for entry in entries if isinstance(entry, dict)]
     accepted = [candidate for candidate in scored if candidate_passes_thresholds(candidate, thresholds)]
@@ -659,6 +823,104 @@ def update_external_candidate_register(
     return register
 
 
+def _budget_exhaustion_reasons(budgets: SearchBudgets, used: dict[str, int], elapsed_seconds: float) -> list[str]:
+    checks = {
+        "api_calls": ("max_api_calls", budgets.max_api_calls),
+        "generated_queries": ("max_generated_queries", budgets.max_generated_queries),
+        "refinement_rounds": ("max_refinement_rounds", budgets.max_refinement_rounds),
+        "result_pages": ("max_result_pages", budgets.max_result_pages),
+        "result_count": ("max_result_count", budgets.max_result_count),
+    }
+    reasons = [
+        f"{used_key}_budget_exhausted"
+        for used_key, (_limit_key, limit) in checks.items()
+        if int(used.get(used_key) or 0) > limit
+    ]
+    if elapsed_seconds > budgets.max_elapsed_seconds:
+        reasons.append("elapsed_time_budget_exhausted")
+    return reasons
+
+
+def budget_status_report(budgets: SearchBudgets, used: dict[str, int], elapsed_seconds: float) -> dict[str, Any]:
+    reasons = _budget_exhaustion_reasons(budgets, used, elapsed_seconds)
+    return {
+        "limits": budgets.as_dict(),
+        "used": {
+            "api_calls": int(used.get("api_calls") or 0),
+            "generated_queries": int(used.get("generated_queries") or 0),
+            "refinement_rounds": int(used.get("refinement_rounds") or 0),
+            "result_pages": int(used.get("result_pages") or 0),
+            "result_count": int(used.get("result_count") or 0),
+            "elapsed_seconds": round(elapsed_seconds, 3),
+        },
+        "within_budget": not reasons,
+        "exhausted": bool(reasons),
+        "exhaustion_reasons": reasons,
+    }
+
+
+def _ensure_scopus_budget_available(budgets: SearchBudgets, thresholds: SearchThresholds) -> None:
+    requested = {
+        "api_calls": 1,
+        "generated_queries": 0,
+        "refinement_rounds": 0,
+        "result_pages": 1,
+        "result_count": thresholds.max_results_per_query,
+    }
+    reasons = _budget_exhaustion_reasons(budgets, requested, 0)
+    if reasons:
+        raise ExternalSearchError(f"Search budget exhausted before Scopus request: {', '.join(reasons)}")
+
+
+def update_filtered_candidate_log(
+    workspace: Path,
+    *,
+    provider: str,
+    query: str,
+    skipped_candidates: list[dict[str, Any]],
+    entries: list[Any],
+    thresholds: SearchThresholds,
+    snapshot_path: str,
+) -> dict[str, Any]:
+    path = filtered_candidate_log_path(workspace)
+    log = read_yaml(path) if path.exists() else {"version": 1, "provider": provider, "candidates": []}
+    eid_counts: dict[str, int] = {}
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("eid"):
+            eid = str(entry["eid"])
+            eid_counts[eid] = eid_counts.get(eid, 0) + 1
+    now = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for candidate in skipped_candidates:
+        reasons = threshold_failure_reasons(candidate, thresholds)
+        metadata_flags = []
+        if not candidate.get("doi"):
+            metadata_flags.append({"kind": "missing_doi", "field": "doi", "observed": None})
+        eid = candidate.get("eid")
+        if eid and eid_counts.get(str(eid), 0) > 1:
+            metadata_flags.append({"kind": "duplicate_eid_in_query", "field": "eid", "observed": eid})
+        row = {
+            "provider": provider,
+            "query": normalize_query_line(query),
+            "created_at": now,
+            "candidate_id": candidate.get("candidate_id"),
+            "title": candidate.get("title"),
+            "doi": candidate.get("doi"),
+            "eid": candidate.get("eid"),
+            "year": candidate.get("year"),
+            "citation_count": candidate.get("citation_count"),
+            "failure_reasons": reasons,
+            "metadata_flags": metadata_flags,
+            "snapshot_path": snapshot_path,
+        }
+        rows.append(row)
+    log["provider"] = provider
+    log.setdefault("candidates", []).extend(rows)
+    log["filtered_count"] = len(log.get("candidates", []))
+    write_yaml(path, log)
+    return log
+
+
 def update_batch_search_run_summary(
     workspace: Path,
     *,
@@ -703,6 +965,399 @@ def update_batch_search_run_summary(
     }
     write_yaml(path, summary)
     return summary
+
+
+def _candidate_metadata_completeness(candidate: dict[str, Any]) -> dict[str, Any]:
+    checks = {
+        "title": bool(candidate.get("title")),
+        "year": bool(candidate.get("year")),
+        "doi": bool(candidate.get("doi")),
+        "eid": bool(candidate.get("eid")),
+        "source_title": bool(candidate.get("source_title")),
+        "authors": bool(candidate.get("authors")),
+    }
+    present = [key for key, value in checks.items() if value]
+    missing = [key for key, value in checks.items() if not value]
+    return {"present": present, "missing": missing, "score": len(present), "possible": len(checks)}
+
+
+def _rq_links_for_candidate(candidate: dict[str, Any], rq_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidate_terms = _text_terms(" ".join(str(candidate.get(key) or "") for key in ("title", "source_title")))
+    links = []
+    for rq in rq_records:
+        overlap = sorted(candidate_terms.intersection(rq.get("terms") or set()))
+        if overlap:
+            links.append({"rq_id": rq["id"], "status": rq.get("status"), "matched_terms": overlap})
+    return links
+
+
+def write_high_signal_candidate_report(workspace: Path, *, limit: int = 50) -> dict[str, Any]:
+    register = read_yaml(external_candidate_register_path(workspace)) if external_candidate_register_path(workspace).exists() else {"candidates": []}
+    rq_records = _research_question_records(workspace)
+    rows = []
+    for candidate in register.get("candidates", []):
+        if not isinstance(candidate, dict):
+            continue
+        rq_links = _rq_links_for_candidate(candidate, rq_records)
+        completeness = _candidate_metadata_completeness(candidate)
+        rows.append(
+            {
+                "candidate_id": candidate.get("candidate_id"),
+                "title": candidate.get("title"),
+                "year": candidate.get("year"),
+                "citation_count": int(candidate.get("citation_count") or 0),
+                "quality_score": int(candidate.get("quality_score") or 0),
+                "open_access": bool(candidate.get("open_access")),
+                "metadata_completeness": completeness,
+                "rq_coverage_count": len(rq_links),
+                "linked_research_questions": rq_links,
+                "doi": candidate.get("doi"),
+                "eid": candidate.get("eid"),
+                "queries": candidate.get("queries") or [],
+            }
+        )
+    rows.sort(
+        key=lambda item: (
+            -int(item["quality_score"]),
+            -int(item["rq_coverage_count"]),
+            -int(item["citation_count"]),
+            -int(item.get("year") or 0),
+            not bool(item["open_access"]),
+            -int(item["metadata_completeness"]["score"]),
+            str(item.get("title") or ""),
+        )
+    )
+    report = {
+        "version": 1,
+        "candidate_count": len(rows),
+        "reported_count": min(len(rows), max(0, limit)),
+        "sort_order": [
+            "quality_score_desc",
+            "rq_coverage_count_desc",
+            "citation_count_desc",
+            "year_desc",
+            "open_access_true_first",
+            "metadata_completeness_desc",
+        ],
+        "candidates": rows[: max(0, limit)],
+    }
+    write_yaml(high_signal_candidate_report_path(workspace), report)
+    return report
+
+
+def _source_metadata_for_matching(source: dict[str, Any]) -> dict[str, Any]:
+    metadata = source.get("citation_metadata") if isinstance(source.get("citation_metadata"), dict) else {}
+    return {
+        "source_id": source.get("source_id"),
+        "title": metadata.get("title") or source.get("zotero_title"),
+        "year": metadata.get("year") or source.get("zotero_year"),
+        "doi": metadata.get("doi") or source.get("zotero_doi"),
+        "eid": source.get("eid") or metadata.get("eid"),
+        "provider": source.get("provider"),
+        "status": source.get("status"),
+    }
+
+
+def external_candidate_deduplication_report(workspace: Path) -> dict[str, Any]:
+    register = read_yaml(external_candidate_register_path(workspace)) if external_candidate_register_path(workspace).exists() else {"candidates": []}
+    candidates = [candidate for candidate in register.get("candidates", []) if isinstance(candidate, dict)]
+    source_register = read_yaml(workspace / "source-register.yaml") if (workspace / "source-register.yaml").exists() else {"sources": []}
+    sources = [_source_metadata_for_matching(source) for source in source_register.get("sources", []) if isinstance(source, dict)]
+
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for candidate in candidates:
+        keys = []
+        doi = _normalize_doi(candidate.get("doi"))
+        if doi:
+            keys.append(("doi", doi))
+        if candidate.get("eid"):
+            keys.append(("eid", str(candidate["eid"]).lower()))
+        title = _normalize_title(candidate.get("title"))
+        if title and candidate.get("year"):
+            keys.append(("title_year", f"{title}::{candidate.get('year')}"))
+        for key in keys:
+            groups.setdefault(key, []).append(candidate)
+
+    duplicate_groups = []
+    for (key_type, key_value), items in sorted(groups.items()):
+        ids = sorted({str(item.get("candidate_id")) for item in items if item.get("candidate_id")})
+        if len(ids) > 1:
+            duplicate_groups.append({"match_type": key_type, "match_key": key_value, "candidate_ids": ids})
+
+    source_matches = []
+    for candidate in candidates:
+        candidate_doi = _normalize_doi(candidate.get("doi"))
+        candidate_title = _normalize_title(candidate.get("title"))
+        candidate_year = str(candidate.get("year") or "")
+        matches = []
+        for source in sources:
+            source_doi = _normalize_doi(source.get("doi"))
+            source_title = _normalize_title(source.get("title"))
+            source_year = str(source.get("year") or "")
+            match_types = []
+            if candidate_doi and source_doi and candidate_doi == source_doi:
+                match_types.append("doi")
+            if candidate.get("eid") and source.get("eid") and str(candidate.get("eid")).lower() == str(source.get("eid")).lower():
+                match_types.append("eid")
+            if candidate_title and source_title and candidate_year and source_year and candidate_title == source_title and candidate_year == source_year:
+                match_types.append("title_year")
+            if match_types:
+                matches.append(
+                    {
+                        "source_id": source.get("source_id"),
+                        "status": source.get("status"),
+                        "provider": source.get("provider"),
+                        "match_types": match_types,
+                    }
+                )
+        if matches:
+            source_matches.append({"candidate_id": candidate.get("candidate_id"), "matches": matches})
+
+    report = {
+        "version": 1,
+        "candidate_count": len(candidates),
+        "duplicate_group_count": len(duplicate_groups),
+        "source_match_count": len(source_matches),
+        "duplicate_groups": duplicate_groups,
+        "source_matches": source_matches,
+        "matching_fields": ["doi", "eid", "title_year"],
+        "notes": "Source matches include local source-register metadata, including Zotero-derived fields when present.",
+    }
+    write_yaml(external_candidate_duplicates_path(workspace), report)
+    return report
+
+
+def external_search_evidence_validation_report(workspace: Path) -> dict[str, Any]:
+    register = read_yaml(external_candidate_register_path(workspace)) if external_candidate_register_path(workspace).exists() else {"candidates": []}
+    candidates = [candidate for candidate in register.get("candidates", []) if isinstance(candidate, dict)]
+    approved_rqs = [rq for rq in _research_question_records(workspace) if rq.get("status") != "candidate"]
+    claims_doc = read_yaml(workspace / "claims-ledger.yaml") if (workspace / "claims-ledger.yaml").exists() else {"claims": []}
+    claims = [claim for claim in claims_doc.get("claims", []) if isinstance(claim, dict)]
+    novelty_doc = read_yaml(workspace / "novelty-ledger.yaml") if (workspace / "novelty-ledger.yaml").exists() else {"assessments": []}
+    novelty_terms = _text_terms(json.dumps(novelty_doc, sort_keys=True))
+    accepted_source_ids = set(read_yaml(workspace / "accepted-sources.yaml").get("source_ids", [])) if (workspace / "accepted-sources.yaml").exists() else set()
+    source_register = read_yaml(workspace / "source-register.yaml") if (workspace / "source-register.yaml").exists() else {"sources": []}
+    accepted_sources = [source for source in source_register.get("sources", []) if isinstance(source, dict) and source.get("source_id") in accepted_source_ids]
+    accepted_terms = _text_terms(json.dumps(accepted_sources, sort_keys=True))
+
+    rows = []
+    for candidate in candidates:
+        candidate_terms = _text_terms(" ".join(str(candidate.get(key) or "") for key in ("title", "source_title")))
+        rq_matches = []
+        for rq in approved_rqs:
+            overlap = sorted(candidate_terms.intersection(rq.get("terms") or set()))
+            if overlap:
+                rq_matches.append({"rq_id": rq["id"], "matched_terms": overlap})
+        claim_matches = []
+        for claim in claims:
+            overlap = sorted(candidate_terms.intersection(_text_terms(claim.get("text"))))
+            if overlap:
+                claim_matches.append({"claim_id": claim.get("id"), "matched_terms": overlap})
+        source_gap_terms = sorted(candidate_terms.difference(accepted_terms))[:10]
+        rows.append(
+            {
+                "candidate_id": candidate.get("candidate_id"),
+                "title": candidate.get("title"),
+                "quality_score": candidate.get("quality_score"),
+                "rq_matches": rq_matches,
+                "claim_matches": claim_matches,
+                "novelty_term_matches": sorted(candidate_terms.intersection(novelty_terms))[:10],
+                "source_gap_terms": source_gap_terms,
+                "needs_review": not rq_matches or bool(source_gap_terms),
+            }
+        )
+    report = {
+        "version": 1,
+        "candidate_count": len(rows),
+        "approved_research_question_count": len(approved_rqs),
+        "claim_count": len(claims),
+        "accepted_source_count": len(accepted_sources),
+        "candidates": rows,
+        "human_review_required": True,
+    }
+    write_yaml(external_evidence_validation_path(workspace), report)
+    return report
+
+
+def external_search_run_comparison_report(workspace: Path) -> dict[str, Any]:
+    register = read_yaml(external_candidate_register_path(workspace)) if external_candidate_register_path(workspace).exists() else {"runs": []}
+    summary = read_yaml(batch_search_summary_path(workspace)) if batch_search_summary_path(workspace).exists() else {"runs": []}
+    plan_path = workspace / "outputs" / "recommendations" / "external-search-query-plan.yaml"
+    plan = read_yaml(plan_path) if plan_path.exists() else {"query_records": []}
+    records_by_query = {
+        query_history_key(str(record.get("query") or "")): record
+        for record in plan.get("query_records", [])
+        if isinstance(record, dict)
+    }
+    summary_by_query = {
+        query_history_key(str(run.get("query") or "")): run
+        for run in summary.get("runs", [])
+        if isinstance(run, dict)
+    }
+    rows = []
+    aggregates: dict[str, dict[str, Any]] = {}
+    for run in register.get("runs", []):
+        if not isinstance(run, dict):
+            continue
+        key = query_history_key(str(run.get("query") or ""))
+        plan_record = records_by_query.get(key, {})
+        summary_run = summary_by_query.get(key, {})
+        strategy = str(plan_record.get("strategy") or "unknown")
+        processed = int(summary_run.get("processed_count") or 0)
+        candidates = int(run.get("candidate_count") or 0)
+        filtered = int(summary_run.get("filtered_count") or run.get("skipped_count") or 0)
+        row = {
+            "query": run.get("query"),
+            "strategy": strategy,
+            "group_label": plan_record.get("group_label"),
+            "processed_count": processed,
+            "candidate_count": candidates,
+            "filtered_count": filtered,
+            "no_results": bool(run.get("no_results")),
+            "low_results": bool(run.get("low_results")),
+            "yield_rate": round(candidates / processed, 3) if processed else 0,
+            "snapshot_path": run.get("snapshot_path"),
+        }
+        rows.append(row)
+        bucket = aggregates.setdefault(
+            strategy,
+            {"strategy": strategy, "run_count": 0, "processed_count": 0, "candidate_count": 0, "filtered_count": 0},
+        )
+        bucket["run_count"] += 1
+        bucket["processed_count"] += processed
+        bucket["candidate_count"] += candidates
+        bucket["filtered_count"] += filtered
+    strategy_rows = []
+    for bucket in aggregates.values():
+        processed = int(bucket["processed_count"])
+        candidates = int(bucket["candidate_count"])
+        strategy_rows.append({**bucket, "yield_rate": round(candidates / processed, 3) if processed else 0})
+    strategy_rows.sort(key=lambda item: (-int(item["candidate_count"]), -float(item["yield_rate"]), str(item["strategy"])))
+    rows.sort(key=lambda item: (-int(item["candidate_count"]), -float(item["yield_rate"]), str(item.get("query") or "")))
+    report = {"version": 1, "strategies": strategy_rows, "runs": rows}
+    write_yaml(external_run_comparison_path(workspace), report)
+    return report
+
+
+def _issue_queries_from_logs(workspace: Path) -> list[dict[str, Any]]:
+    records = []
+    for path, issue in (
+        (workspace / "outputs" / "external-search" / "scopus-no-results.yaml", "no_results"),
+        (workspace / "outputs" / "external-search" / "scopus-low-results.yaml", "low_results"),
+    ):
+        if not path.exists():
+            continue
+        data = read_yaml(path)
+        for item in data.get("queries", []):
+            if isinstance(item, dict) and item.get("query"):
+                records.append({"query": normalize_query_line(str(item["query"])), "issue": issue, "source_path": str(path)})
+    if batch_search_summary_path(workspace).exists():
+        summary = read_yaml(batch_search_summary_path(workspace))
+        for run in summary.get("runs", []):
+            if not isinstance(run, dict) or not run.get("query"):
+                continue
+            if int(run.get("no_result_count") or 0):
+                records.append({"query": normalize_query_line(str(run["query"])), "issue": "no_results", "source_path": str(batch_search_summary_path(workspace))})
+            elif int(run.get("low_result_count") or 0):
+                records.append({"query": normalize_query_line(str(run["query"])), "issue": "low_results", "source_path": str(batch_search_summary_path(workspace))})
+    out = []
+    seen = set()
+    for record in records:
+        key = (record["query"].lower(), record["issue"])
+        if key not in seen:
+            seen.add(key)
+            out.append(record)
+    return out
+
+
+def _broadened_query_candidates(query: str) -> list[str]:
+    quoted = [term.strip() for term in re.findall(r'"([^"]+)"', query) if term.strip()]
+    candidates = []
+    if len(quoted) >= 2:
+        for index in range(len(quoted)):
+            remaining = [term for pos, term in enumerate(quoted) if pos != index]
+            candidates.append(" AND ".join(_quote(term) for term in remaining))
+    if " AND " in query.upper() and not candidates:
+        parts = [part.strip(" ()") for part in re.split(r"\s+AND\s+", query, flags=re.IGNORECASE) if part.strip(" ()")]
+        if len(parts) >= 2:
+            for index in range(len(parts)):
+                candidates.append(" AND ".join(part for pos, part in enumerate(parts) if pos != index))
+    return [candidate for candidate in _dedupe(candidates) if query_history_key(candidate) != query_history_key(query)]
+
+
+def generate_auto_refine_plan(
+    workspace: Path,
+    *,
+    budgets: SearchBudgets | None = None,
+    max_queries: int = 20,
+    max_refinement_rounds: int = 1,
+    max_results_per_query: int = 25,
+) -> dict[str, Any]:
+    start = time.monotonic()
+    budgets = budgets or SearchBudgets.from_options(
+        max_generated_queries=max_queries,
+        max_refinement_rounds=max_refinement_rounds,
+        max_result_count=max_queries * max_results_per_query,
+        max_result_pages=max_queries,
+    )
+    configured_query_limit = max(0, max_queries)
+    result_count_limit = budgets.max_result_count // max(1, max_results_per_query)
+    allowed_queries = min(configured_query_limit, budgets.max_generated_queries, budgets.max_result_pages, result_count_limit)
+    allowed_rounds = min(max(0, max_refinement_rounds), budgets.max_refinement_rounds)
+    issue_queries = _issue_queries_from_logs(workspace)
+    query_records = []
+    seen = set()
+    for issue in issue_queries:
+        if len(query_records) >= allowed_queries or allowed_rounds <= 0:
+            break
+        for candidate in _broadened_query_candidates(issue["query"]):
+            if len(query_records) >= allowed_queries:
+                break
+            key = query_history_key(candidate)
+            if key in seen:
+                continue
+            seen.add(key)
+            query_records.append(
+                {
+                    "query": candidate,
+                    "source_query": issue["query"],
+                    "source_issue": issue["issue"],
+                    "source_path": issue["source_path"],
+                    "strategy": "deterministic_auto_refine",
+                    "refinement_round": 1,
+                    "external_search_performed": False,
+                }
+            )
+    elapsed = time.monotonic() - start
+    used = {
+        "api_calls": 0,
+        "generated_queries": len(query_records),
+        "refinement_rounds": 1 if query_records else 0,
+        "result_pages": len(query_records),
+        "result_count": len(query_records) * max(1, max_results_per_query),
+    }
+    budget_status = budget_status_report(budgets, used, elapsed)
+    exhaustion_reasons = list(budget_status["exhaustion_reasons"])
+    if issue_queries and len(query_records) >= allowed_queries:
+        exhaustion_reasons.append("query_budget_reached")
+    if issue_queries and allowed_rounds <= 0:
+        exhaustion_reasons.append("refinement_round_budget_reached")
+    if exhaustion_reasons:
+        budget_status = {**budget_status, "exhausted": True, "within_budget": False, "exhaustion_reasons": _dedupe(exhaustion_reasons)}
+    plan = {
+        "version": 1,
+        "source": "no_result_and_low_result_logs",
+        "external_search_performed": False,
+        "approval_required": True,
+        "issue_query_count": len(issue_queries),
+        "query_count": len(query_records),
+        "max_results_per_query": max(1, max_results_per_query),
+        "budget_status": budget_status,
+        "queries": [record["query"] for record in query_records],
+        "query_records": query_records,
+    }
+    write_yaml(auto_refine_plan_path(workspace), plan)
+    return plan
 
 
 def scopus_get(
@@ -754,10 +1409,14 @@ def scopus_search(
     query: str,
     count: int = 25,
     thresholds: SearchThresholds | None = None,
+    budgets: SearchBudgets | None = None,
     opener: Callable[[Request], Any] | None = None,
 ) -> dict[str, Any]:
+    start = time.monotonic()
     normalized_query = normalize_query_line(query)
     thresholds = thresholds or SearchThresholds.from_options(max_results_per_query=count)
+    budgets = budgets or SearchBudgets.from_options(max_result_count=thresholds.max_results_per_query)
+    _ensure_scopus_budget_available(budgets, thresholds)
     data = scopus_get(
         credentials,
         {"query": normalized_query, "count": thresholds.max_results_per_query, "view": "STANDARD"},
@@ -779,6 +1438,15 @@ def scopus_search(
         skipped_candidates=skipped_candidates,
         thresholds=thresholds,
     )
+    filtered_log = update_filtered_candidate_log(
+        workspace,
+        provider="scopus",
+        query=normalized_query,
+        skipped_candidates=skipped_candidates,
+        entries=entries,
+        thresholds=thresholds,
+        snapshot_path=str(snapshot_path),
+    )
     write_yaml(query_validation_path(workspace), {"version": 1, "provider": "scopus", "validation": validation})
     register = update_external_candidate_register(
         workspace,
@@ -788,6 +1456,18 @@ def scopus_search(
         skipped_candidates=skipped_candidates,
         validation=validation,
         snapshot_path=str(snapshot_path),
+    )
+    elapsed = time.monotonic() - start
+    budget_status = budget_status_report(
+        budgets,
+        {
+            "api_calls": 1,
+            "generated_queries": 0,
+            "refinement_rounds": 0,
+            "result_pages": 1,
+            "result_count": len(entries),
+        },
+        elapsed,
     )
     metrics = {
         "query": normalized_query,
@@ -801,6 +1481,8 @@ def scopus_search(
         "snapshot_path": str(snapshot_path),
         "candidate_register_path": str(external_candidate_register_path(workspace)),
         "query_validation_path": str(query_validation_path(workspace)),
+        "filtered_candidate_log_path": str(filtered_candidate_log_path(workspace)),
+        "budget_status": budget_status,
     }
     summary = update_batch_search_run_summary(workspace, provider="scopus", metrics=metrics, validation=validation)
     metrics["batch_summary_path"] = str(batch_search_summary_path(workspace))
@@ -828,6 +1510,14 @@ def scopus_search(
         )
         write_yaml(low_results_path, current)
     record_queries_used(workspace, [normalized_query], [metrics])
+    high_signal = write_high_signal_candidate_report(workspace)
+    duplicates = external_candidate_deduplication_report(workspace)
+    evidence_validation = external_search_evidence_validation_report(workspace)
+    run_comparison = external_search_run_comparison_report(workspace)
+    metrics["high_signal_report_path"] = str(high_signal_candidate_report_path(workspace))
+    metrics["candidate_duplicates_path"] = str(external_candidate_duplicates_path(workspace))
+    metrics["evidence_validation_path"] = str(external_evidence_validation_path(workspace))
+    metrics["run_comparison_path"] = str(external_run_comparison_path(workspace))
     return {
         "version": 1,
         "provider": "scopus",
@@ -835,5 +1525,10 @@ def scopus_search(
         "snapshot_path": str(snapshot_path),
         "validation": validation,
         "batch_summary": summary,
+        "filtered_candidate_log": filtered_log,
+        "high_signal_report": high_signal,
+        "candidate_duplicates": duplicates,
+        "evidence_validation": evidence_validation,
+        "run_comparison": run_comparison,
         "candidate_count_total": len(register.get("candidates", [])),
     }

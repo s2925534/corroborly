@@ -57,7 +57,7 @@ Phase 1 complete:
 - OpenAI readiness checks through `researchboss ai test`, with live requests requiring explicit `--ai`
 - Safe local AI context previews through `researchboss ai context-preview --ai`, excluding original files and whole documents or datasets by default
 - AI-assisted review, novelty assessment, research-question assessment, corpus summary, claim-checking, citation-gap, artefact cross-reference, and source-relevance commands, all requiring explicit `--ai`
-- Explicit Scopus external-search runs with structured query plans, legacy params-file import, query strategy modes, local snapshots, query validation, quality-scored candidate registers, threshold filters, and no-result or low-result logs
+- Explicit Scopus external-search runs with structured query plans, legacy params-file import, query strategy modes, local snapshots, query validation, quality-scored candidate registers, threshold filters, no-result or low-result logs, saved refine plans, and local candidate reports
 - Zotero-style citation wording during init, including explicit `American Psychological Association 7th edition`
 - Strict one-way Zotero-to-ResearchBoss blocker config that prevents writes inside the local Zotero directory
 - SHA-256 file hashing
@@ -234,6 +234,8 @@ researchboss ai citation-gaps --ai [--workspace <path>]
 researchboss ai artefact-cross-reference --ai [--workspace <path>]
 researchboss ai source-relevance --ai [--workspace <path>]
 researchboss search plan [--workspace <path>] [--strategy broad|balanced|strict] [--params-file <path>]
+researchboss search refine-plan [--workspace <path>]
+researchboss search reports [--workspace <path>]
 researchboss search scopus-test --external-search [--workspace <path>]
 researchboss search scopus --external-search "query" [--workspace <path>]
 researchboss zotero search "keyword terms" [--workspace <path>] [--storage <zotero-storage-folder>]

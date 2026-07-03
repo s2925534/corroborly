@@ -7,9 +7,11 @@ import pytest
 from researchboss.core.yamlio import read_yaml
 from researchboss.engine.external_search import (
     ExternalSearchError,
+    SearchBudgets,
     SearchThresholds,
     ScopusCredentials,
     filter_unused_queries,
+    generate_auto_refine_plan,
     generate_search_query_plan,
     parse_legacy_params_file,
     query_history_key,
@@ -256,6 +258,136 @@ def test_scopus_search_updates_batch_summary_across_queries(tmp_path: Path) -> N
         "low_result_count": 1,
     }
     assert [run["query"] for run in summary["runs"]] == ['"evidence"', '"missing"']
+
+
+def test_scopus_search_enforces_search_budgets_before_request(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    def opener(_request: Request):
+        raise AssertionError("request should not be made after budget exhaustion")
+
+    with pytest.raises(ExternalSearchError, match="result_count_budget_exhausted"):
+        scopus_search(
+            workspace,
+            ScopusCredentials(api_key="scopus-secret"),
+            query='"container"',
+            count=5,
+            thresholds=SearchThresholds.from_options(max_results_per_query=5),
+            budgets=SearchBudgets.from_options(max_result_count=3),
+            opener=opener,
+        )
+
+
+def test_scopus_search_writes_filtered_logs_and_external_reports(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(
+        workspace,
+        project_name="Test",
+        project_type="M.Phil",
+        topic="container evidence",
+        research_questions=[{"id": "rq1", "question": "How does container evidence support claims?", "status": "approved"}],
+    )
+    (workspace / "source-register.yaml").write_text(
+        """
+version: 1
+sources:
+  - source_id: source-001
+    provider: zotero_storage
+    status: accepted
+    citation_metadata:
+      title: Local evidence paper
+      year: "2024"
+      doi: 10.1000/strong
+""",
+        encoding="utf-8",
+    )
+    (workspace / "accepted-sources.yaml").write_text("version: 1\nsource_ids:\n  - source-001\n", encoding="utf-8")
+    (workspace / "claims-ledger.yaml").write_text(
+        "version: 1\nclaims:\n  - id: claim-001\n    text: Container evidence supports claim review.\n    linked_sources: []\n",
+        encoding="utf-8",
+    )
+
+    def opener(_request: Request):
+        return FakeResponse(
+            {
+                "search-results": {
+                    "entry": [
+                        {
+                            "dc:title": "Container evidence supports claim review",
+                            "citedby-count": "30",
+                            "prism:coverDate": "2024-01-01",
+                            "prism:doi": "10.1000/strong",
+                            "eid": "2-s2.0-strong",
+                        },
+                        {
+                            "dc:title": "Old filtered paper",
+                            "citedby-count": "1",
+                            "prism:coverDate": "2010-01-01",
+                            "eid": "2-s2.0-filtered",
+                        },
+                    ]
+                }
+            }
+        )
+
+    report = scopus_search(
+        workspace,
+        ScopusCredentials(api_key="scopus-secret"),
+        query='"container" AND "evidence"',
+        count=2,
+        thresholds=SearchThresholds.from_options(min_citations=10, year_from=2020),
+        opener=opener,
+    )
+
+    filtered = read_yaml(Path(report["metrics"]["filtered_candidate_log_path"]))
+    assert filtered["candidates"][0]["failure_reasons"][0]["kind"] == "below_min_citations"
+    assert filtered["candidates"][0]["metadata_flags"][0]["kind"] == "missing_doi"
+    high_signal = read_yaml(Path(report["metrics"]["high_signal_report_path"]))
+    assert high_signal["candidates"][0]["rq_coverage_count"] == 1
+    duplicates = read_yaml(Path(report["metrics"]["candidate_duplicates_path"]))
+    assert duplicates["source_match_count"] == 1
+    evidence = read_yaml(Path(report["metrics"]["evidence_validation_path"]))
+    assert evidence["candidates"][0]["claim_matches"][0]["claim_id"] == "claim-001"
+    comparison = read_yaml(Path(report["metrics"]["run_comparison_path"]))
+    assert comparison["runs"][0]["candidate_count"] == 1
+
+
+def test_generate_auto_refine_plan_uses_issue_logs_and_budgets(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    issue_log = workspace / "outputs" / "external-search" / "scopus-no-results.yaml"
+    issue_log.parent.mkdir(parents=True, exist_ok=True)
+    issue_log.write_text(
+        """
+version: 1
+queries:
+  - query: '"container" AND "port" AND "evidence"'
+    refinement_suggestions:
+      - Broaden the query.
+""",
+        encoding="utf-8",
+    )
+
+    plan = generate_auto_refine_plan(
+        workspace,
+        budgets=SearchBudgets.from_options(
+            max_api_calls=0,
+            max_generated_queries=1,
+            max_refinement_rounds=1,
+            max_result_pages=1,
+            max_result_count=25,
+        ),
+        max_queries=5,
+        max_refinement_rounds=1,
+        max_results_per_query=25,
+    )
+
+    assert plan["approval_required"] is True
+    assert plan["external_search_performed"] is False
+    assert plan["queries"] == ['"port" AND "evidence"']
+    assert "query_budget_reached" in plan["budget_status"]["exhaustion_reasons"]
+    assert (workspace / "outputs" / "recommendations" / "external-search-refine-plan.yaml").is_file()
 
 
 def test_score_scopus_entry_uses_only_returned_metadata() -> None:

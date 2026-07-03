@@ -39,13 +39,24 @@ from researchboss.engine.data import data_source_counts, list_data_sources, prof
 from researchboss.engine.export import export_evidence_bundle
 from researchboss.engine.external_search import (
     ExternalSearchError,
+    SearchBudgets,
     SearchThresholds,
+    auto_refine_plan_path,
+    external_candidate_deduplication_report,
+    external_candidate_duplicates_path,
+    external_evidence_validation_path,
+    external_run_comparison_path,
+    external_search_evidence_validation_report,
+    external_search_run_comparison_report,
     filter_unused_queries,
+    generate_auto_refine_plan,
     generate_search_query_plan,
+    high_signal_candidate_report_path,
     require_external_search_flag,
     scopus_credentials,
     scopus_readiness,
     scopus_search,
+    write_high_signal_candidate_report,
 )
 from researchboss.engine.health import workspace_health_report
 from researchboss.engine.metadata import extract_citation_metadata
@@ -972,6 +983,81 @@ def search_plan(
     console.print(table)
 
 
+@search_app.command("refine-plan")
+def search_refine_plan(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    max_queries: int = typer.Option(20, "--max-queries", help="Maximum follow-up queries to save."),
+    max_refinement_rounds: int = typer.Option(1, "--max-refinement-rounds", help="Maximum deterministic refinement rounds to plan."),
+    max_results_per_query: int = typer.Option(25, "--max-results-per-query", help="Planned result budget per follow-up query."),
+    max_result_pages: int = typer.Option(20, "--max-result-pages", help="Maximum result pages allowed in the saved plan."),
+    max_results: int = typer.Option(500, "--max-results", help="Maximum total result records allowed in the saved plan."),
+    max_elapsed_seconds: int = typer.Option(300, "--max-elapsed-seconds", help="Maximum planning runtime budget in seconds."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Save deterministic broader follow-up queries for no-result or low-result searches."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["search", "refine_plan"], ws, log_level)
+    budgets = SearchBudgets.from_options(
+        max_api_calls=0,
+        max_generated_queries=max_queries,
+        max_refinement_rounds=max_refinement_rounds,
+        max_result_pages=max_result_pages,
+        max_result_count=max_results,
+        max_elapsed_seconds=max_elapsed_seconds,
+    )
+    plan = generate_auto_refine_plan(
+        ws,
+        budgets=budgets,
+        max_queries=max_queries,
+        max_refinement_rounds=max_refinement_rounds,
+        max_results_per_query=max_results_per_query,
+    )
+    logger.info("Generated external search refine plan", operation="search_refine_plan", query_count=plan["query_count"])
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    console.print(f"[green]Wrote[/green] {auto_refine_plan_path(ws)}")
+    table = Table(title="External search refine plan")
+    table.add_column("#", justify="right")
+    table.add_column("query")
+    table.add_column("source issue")
+    for index, record in enumerate(plan.get("query_records", []), start=1):
+        table.add_row(str(index), str(record.get("query") or ""), str(record.get("source_issue") or ""))
+    console.print(table)
+
+
+@search_app.command("reports")
+def search_reports(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    limit: int = typer.Option(50, "--limit", help="Maximum high-signal candidates to include."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Regenerate deterministic external-search reports from local candidate registers."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["search", "reports"], ws, log_level)
+    high_signal = write_high_signal_candidate_report(ws, limit=limit)
+    duplicates = external_candidate_deduplication_report(ws)
+    evidence = external_search_evidence_validation_report(ws)
+    comparison = external_search_run_comparison_report(ws)
+    logger.info(
+        "Generated external search reports",
+        operation="search_reports",
+        high_signal_candidates=high_signal["reported_count"],
+        duplicate_groups=duplicates["duplicate_group_count"],
+        evidence_candidates=evidence["candidate_count"],
+        run_count=len(comparison["runs"]),
+    )
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    console.print(f"[green]Wrote[/green] {high_signal_candidate_report_path(ws)}")
+    console.print(f"[green]Wrote[/green] {external_candidate_duplicates_path(ws)}")
+    console.print(f"[green]Wrote[/green] {external_evidence_validation_path(ws)}")
+    console.print(f"[green]Wrote[/green] {external_run_comparison_path(ws)}")
+
+
 @search_app.command("scopus-test")
 def search_scopus_test(
     workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
@@ -1011,6 +1097,12 @@ def search_scopus(
     year_to: Optional[int] = typer.Option(None, "--year-to", help="Latest publication year for candidate-register inclusion."),
     open_access_only: bool = typer.Option(False, "--open-access-only", help="Only include Scopus results marked open access in the candidate register."),
     low_result_threshold: int = typer.Option(3, "--low-result-threshold", help="Log query as low-result when processed results are at or below this count."),
+    max_api_calls: int = typer.Option(1, "--max-api-calls", help="Maximum API calls allowed for this run."),
+    max_generated_queries: int = typer.Option(0, "--max-generated-queries", help="Maximum generated queries allowed for this run."),
+    max_refinement_rounds: int = typer.Option(0, "--max-refinement-rounds", help="Maximum refinement rounds allowed for this run."),
+    max_result_pages: int = typer.Option(1, "--max-result-pages", help="Maximum result pages allowed for this run."),
+    max_results: int = typer.Option(200, "--max-results", help="Maximum result records allowed for this run."),
+    max_elapsed_seconds: int = typer.Option(300, "--max-elapsed-seconds", help="Maximum elapsed-time budget in seconds."),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
 ):
@@ -1027,7 +1119,15 @@ def search_scopus(
             max_results_per_query=count,
             low_result_threshold=low_result_threshold,
         )
-        report = scopus_search(ws, scopus_credentials(ws), query=query, count=count, thresholds=thresholds)
+        budgets = SearchBudgets.from_options(
+            max_api_calls=max_api_calls,
+            max_generated_queries=max_generated_queries,
+            max_refinement_rounds=max_refinement_rounds,
+            max_result_pages=max_result_pages,
+            max_result_count=max_results,
+            max_elapsed_seconds=max_elapsed_seconds,
+        )
+        report = scopus_search(ws, scopus_credentials(ws), query=query, count=count, thresholds=thresholds, budgets=budgets)
     except ExternalSearchError as e:
         logger.error("Scopus search failed", operation="search_scopus", error=str(e))
         summary.errors += 1
@@ -1047,6 +1147,11 @@ def search_scopus(
         console.print(f"[green]Wrote[/green] {report['metrics']['candidate_register_path']}")
         console.print(f"[green]Wrote[/green] {report['metrics']['query_validation_path']}")
         console.print(f"[green]Wrote[/green] {report['metrics']['batch_summary_path']}")
+        console.print(f"[green]Wrote[/green] {report['metrics']['filtered_candidate_log_path']}")
+        console.print(f"[green]Wrote[/green] {report['metrics']['high_signal_report_path']}")
+        console.print(f"[green]Wrote[/green] {report['metrics']['candidate_duplicates_path']}")
+        console.print(f"[green]Wrote[/green] {report['metrics']['evidence_validation_path']}")
+        console.print(f"[green]Wrote[/green] {report['metrics']['run_comparison_path']}")
 
 
 @app.command("assess-novelty")

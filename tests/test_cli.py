@@ -135,6 +135,54 @@ def test_cli_search_plan_imports_params_file_and_strategy(tmp_path: Path) -> Non
     assert plan["query_records"][0]["group_label"] == "RQ1: Container Readiness"
 
 
+def test_cli_search_refine_plan_writes_saved_plan(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="container port evidence")
+    write_yaml(
+        workspace / "outputs" / "external-search" / "scopus-no-results.yaml",
+        {"version": 1, "queries": [{"query": '"container" AND "port" AND "evidence"'}]},
+    )
+
+    result = runner.invoke(app, ["search", "refine-plan", "--workspace", str(workspace), "--max-queries", "1", "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    plan = read_yaml(workspace / "outputs" / "recommendations" / "external-search-refine-plan.yaml")
+    assert plan["approval_required"] is True
+    assert plan["query_count"] == 1
+
+
+def test_cli_search_reports_writes_external_search_reports(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="container port evidence")
+    write_yaml(
+        workspace / "outputs" / "recommendations" / "external-paper-candidates.yaml",
+        {
+            "version": 1,
+            "candidates": [
+                {
+                    "candidate_id": "ext-001",
+                    "title": "Container port evidence",
+                    "year": 2024,
+                    "citation_count": 12,
+                    "quality_score": 40,
+                    "open_access": True,
+                    "doi": "10.1000/example",
+                    "eid": "2-s2.0-example",
+                }
+            ],
+            "runs": [{"query": '"container"', "candidate_count": 1, "skipped_count": 0}],
+        },
+    )
+
+    result = runner.invoke(app, ["search", "reports", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert (workspace / "outputs" / "recommendations" / "external-high-signal-candidates.yaml").is_file()
+    assert (workspace / "outputs" / "validation" / "external-candidate-duplicates.yaml").is_file()
+    assert (workspace / "outputs" / "validation" / "external-search-evidence-validation.yaml").is_file()
+    assert (workspace / "outputs" / "validation" / "external-search-run-comparison.yaml").is_file()
+
+
 def test_cli_search_scopus_requires_external_search_flag(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
@@ -152,10 +200,11 @@ def test_cli_search_scopus_passes_threshold_options(tmp_path: Path, monkeypatch)
     def fake_credentials(_workspace):
         return object()
 
-    def fake_scopus_search(_workspace, _credentials, *, query, count, thresholds):
+    def fake_scopus_search(_workspace, _credentials, *, query, count, thresholds, budgets):
         captured["query"] = query
         captured["count"] = count
         captured["thresholds"] = thresholds
+        captured["budgets"] = budgets
         return {
             "metrics": {
                 "processed": 1,
@@ -189,6 +238,12 @@ def test_cli_search_scopus_passes_threshold_options(tmp_path: Path, monkeypatch)
             "--open-access-only",
             "--low-result-threshold",
             "2",
+            "--max-api-calls",
+            "1",
+            "--max-result-pages",
+            "1",
+            "--max-results",
+            "7",
             "--quiet",
         ],
     )
@@ -201,6 +256,9 @@ def test_cli_search_scopus_passes_threshold_options(tmp_path: Path, monkeypatch)
     assert captured["thresholds"].year_to == 2026
     assert captured["thresholds"].open_access_only is True
     assert captured["thresholds"].low_result_threshold == 2
+    assert captured["budgets"].max_api_calls == 1
+    assert captured["budgets"].max_result_pages == 1
+    assert captured["budgets"].max_result_count == 7
 
 
 def test_cli_ai_workspace_report_commands_require_ai_flag(tmp_path: Path) -> None:
