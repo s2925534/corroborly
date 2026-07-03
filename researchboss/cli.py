@@ -13,6 +13,7 @@ from rich.table import Table
 
 from researchboss.core.runlog import JsonlLogger, RunSummary, make_run_paths, write_run_summary
 from researchboss.core.yamlio import read_yaml, write_yaml
+from researchboss.engine.conversion import convert_sources
 from researchboss.engine.sources import (
     ScanResult,
     iter_source_files,
@@ -638,6 +639,41 @@ def scan(
             f"[green]Scan complete[/green] processed={result.processed} added={result.added} "
             f"duplicates={result.duplicates} skipped={result.skipped}"
         )
+
+
+@app.command()
+def convert(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    status: Optional[str] = typer.Option(None, "--status", help="Only convert sources with this review status."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Convert registered sources into local text files."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["convert"], ws, log_level)
+
+    result = convert_sources(ws, status=status)
+    summary.files_processed = result.processed
+    summary.files_succeeded = result.converted
+    summary.files_skipped = result.skipped
+    summary.errors += result.failed
+    logger.info(
+        "Converted sources",
+        operation="convert",
+        status_filter=status,
+        processed=result.processed,
+        converted=result.converted,
+        skipped=result.skipped,
+        failed=result.failed,
+    )
+    _finish(summary, summary_path, next_action="Review converted text under sources_text/.")
+
+    if quiet:
+        return
+    console.print(
+        f"[green]Convert complete[/green] processed={result.processed} converted={result.converted} "
+        f"skipped={result.skipped} failed={result.failed}"
+    )
 
 
 @zotero_app.command("collections")

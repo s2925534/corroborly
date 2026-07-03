@@ -309,6 +309,26 @@ def test_cli_scan_list_status_and_source_transitions(tmp_path: Path) -> None:
     ]
 
 
+def test_cli_convert_converts_registered_txt_sources(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "notes.txt").write_text("content", encoding="utf-8")
+    init_workspace_with_cli(workspace)
+    scan_result = runner.invoke(
+        app,
+        ["scan", "--workspace", str(workspace), "--source", str(source_root), "--quiet"],
+    )
+    assert scan_result.exit_code == 0, scan_result.output
+
+    convert_result = runner.invoke(app, ["convert", "--workspace", str(workspace), "--quiet"])
+
+    assert convert_result.exit_code == 0, convert_result.output
+    source = read_yaml(workspace / "source-register.yaml")["sources"][0]
+    assert source["conversion"]["status"] == "converted"
+    assert Path(source["conversion"]["output_path"]).is_file()
+
+
 def test_cli_scan_uses_configured_zotero_provider_when_kind_is_omitted(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     storage_root = tmp_path / "Zotero" / "storage"
