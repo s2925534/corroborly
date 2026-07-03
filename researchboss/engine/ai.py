@@ -392,3 +392,76 @@ def ai_novelty_assessment(
         },
     )
     return report
+
+
+def _rq_assessment_prompt(context: dict[str, Any], research_questions: dict[str, Any], rq_id: str | None) -> str:
+    return (
+        "You are assisting with research-question assessment for a local-first research workspace.\n"
+        "Use only the provided research questions and safe context. Do not claim that novelty, usefulness, "
+        "or evidence quality are proven. Assess likely strengths, weaknesses, scope risks, evidence fit, "
+        "field usefulness signals, and follow-up revisions. Return concise markdown with one section per "
+        "research question and a final Human Review Required section.\n\n"
+        f"Requested research question id: {rq_id or 'all'}\n\n"
+        f"Research questions JSON:\n{json.dumps(research_questions, ensure_ascii=False, indent=2)}\n\n"
+        f"Safe context JSON:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
+    )
+
+
+def _filter_research_questions(research_questions: dict[str, Any], rq_id: str | None) -> dict[str, Any]:
+    if rq_id is None:
+        return research_questions
+    filtered: dict[str, Any] = {}
+    matched = False
+    for group, items in research_questions.items():
+        group_items = [item for item in items if isinstance(item, dict) and item.get("id") == rq_id]
+        if group_items:
+            matched = True
+        filtered[group] = group_items
+    if not matched:
+        raise OpenAiError(f"Unknown research question: {rq_id}")
+    return filtered
+
+
+def ai_research_question_assessment(
+    workspace: Path,
+    credentials: OpenAiCredentials,
+    *,
+    rq_id: str | None = None,
+    max_sources: int = 10,
+    max_excerpt_chars: int = 1200,
+    opener: Callable[[Request], Any] | None = None,
+) -> dict[str, Any]:
+    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
+    research_questions = {
+        "approved": read_yaml(workspace / "research-questions.yaml").get("research_questions", []),
+        "candidates": read_yaml(workspace / "research-question-candidates.yaml").get("candidates", []),
+    }
+    selected_questions = _filter_research_questions(research_questions, rq_id)
+    question_count = sum(len(items) for items in selected_questions.values())
+    model = default_openai_model(workspace)
+    response = openai_post(
+        "responses",
+        credentials,
+        {
+            "model": model,
+            "input": _rq_assessment_prompt(context, selected_questions, rq_id),
+        },
+        opener=opener,
+    )
+    assessment_text = extract_response_text(response)
+    return {
+        "version": 1,
+        "kind": "ai_research_question_assessment",
+        "provider": "openai",
+        "model": model,
+        "ai_used": True,
+        "requires_user_review": True,
+        "novelty_not_proven": True,
+        "safe_context_policy": context["policy"],
+        "limits": context["limits"],
+        "source_count": len(context["sources"]),
+        "research_question_count": question_count,
+        "rq_id": rq_id,
+        "response_id": response.get("id") if isinstance(response, dict) else None,
+        "assessment": assessment_text,
+    }

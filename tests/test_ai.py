@@ -10,6 +10,7 @@ from researchboss.engine.ai import (
     OpenAiError,
     ai_assisted_review,
     ai_novelty_assessment,
+    ai_research_question_assessment,
     build_safe_context,
     extract_response_text,
     load_dotenv_values,
@@ -261,3 +262,56 @@ def test_ai_novelty_assessment_writes_ledger_without_claiming_proof(tmp_path: Pa
     assert ledger["assessments"][0]["id"] == "novelty-001"
     assert ledger["assessments"][0]["novelty_not_proven"] is True
     assert "sk-secret" not in str(report)
+
+
+def test_ai_research_question_assessment_can_target_one_question(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("bounded RQ context", encoding="utf-8")
+    init_workspace(
+        workspace,
+        project_name="Test",
+        project_type="M.Phil",
+        topic="Topic",
+        research_questions=[
+            {"question": "How does local evidence tracking affect review quality?", "status": "approved"},
+            {"question": "What should be archived?", "status": "draft"},
+        ],
+    )
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+    set_source_status(workspace, source_id=source_id, new_status="accepted")
+    convert_sources(workspace, status="accepted")
+
+    def opener(request: Request):
+        body = json.loads(request.data.decode("utf-8"))
+        assert "rq-001" in body["input"]
+        assert "rq-002" not in body["input"]
+        assert "bounded RQ context" in body["input"]
+        assert str(source_file) not in body["input"]
+        return FakeResponse({"id": "resp_rq", "output_text": "RQ assessment"})
+
+    report = ai_research_question_assessment(
+        workspace,
+        OpenAiCredentials(api_key="sk-secret"),
+        rq_id="rq-001",
+        max_sources=1,
+        max_excerpt_chars=100,
+        opener=opener,
+    )
+
+    assert report["kind"] == "ai_research_question_assessment"
+    assert report["requires_user_review"] is True
+    assert report["novelty_not_proven"] is True
+    assert report["research_question_count"] == 1
+    assert report["assessment"] == "RQ assessment"
+
+
+def test_ai_research_question_assessment_rejects_unknown_question(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    with pytest.raises(OpenAiError, match="Unknown research question"):
+        ai_research_question_assessment(workspace, OpenAiCredentials(api_key="sk-secret"), rq_id="rq-missing")
