@@ -434,6 +434,16 @@ def test_cli_claims_add_list_and_gaps(tmp_path: Path) -> None:
     assert (workspace / "outputs" / "validation" / "citation-gaps.yaml").is_file()
 
 
+def test_cli_report_generates_workspace_report(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["report", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert (workspace / "outputs" / "reports" / "workspace-report.md").is_file()
+
+
 def test_cli_scan_uses_configured_zotero_provider_when_kind_is_omitted(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     storage_root = tmp_path / "Zotero" / "storage"

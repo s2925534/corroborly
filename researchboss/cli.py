@@ -24,6 +24,7 @@ from researchboss.engine.research_questions import (
     list_research_questions,
     reject_research_question,
 )
+from researchboss.engine.reports import generate_workspace_report
 from researchboss.engine.sources import (
     ScanResult,
     iter_source_files,
@@ -659,6 +660,22 @@ def scan(
             f"[green]Scan complete[/green] processed={result.processed} added={result.added} "
             f"duplicates={result.duplicates} skipped={result.skipped}"
         )
+
+
+@app.command()
+def report(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate a local Markdown workspace report."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["report"], ws, log_level)
+    output_path = generate_workspace_report(ws)
+    logger.info("Generated workspace report", operation="report", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
 
 
 @app.command()
