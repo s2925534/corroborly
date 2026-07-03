@@ -14,6 +14,7 @@ from rich.table import Table
 from researchboss.core.runlog import JsonlLogger, RunSummary, make_run_paths, write_run_summary
 from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.conversion import convert_sources
+from researchboss.engine.data import data_source_counts, list_data_sources, profile_data_sources
 from researchboss.engine.metadata import extract_citation_metadata
 from researchboss.engine.sources import (
     ScanResult,
@@ -56,11 +57,13 @@ sources_app = typer.Typer(help="Source inbox + register commands.")
 config_app = typer.Typer(help="Config commands.")
 zotero_app = typer.Typer(help="Read-only local Zotero storage commands.")
 metadata_app = typer.Typer(help="Deterministic metadata commands.")
+data_app = typer.Typer(help="Local data source commands.")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
 app.add_typer(zotero_app, name="zotero")
 app.add_typer(metadata_app, name="metadata")
+app.add_typer(data_app, name="data")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -704,6 +707,81 @@ def metadata_extract(
 
     if not quiet:
         console.print(f"[green]Metadata extracted[/green] processed={result.processed} updated={result.updated}")
+
+
+@data_app.command("profile")
+def data_profile(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    status: Optional[str] = typer.Option(None, "--status", help="Only profile data sources with this review status."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Profile local CSV, SQLite, and JSON data sources."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["data", "profile"], ws, log_level)
+    result = profile_data_sources(ws, status=status)
+    summary.files_processed = result.processed
+    summary.files_succeeded = result.profiled
+    summary.files_skipped = result.skipped
+    logger.info("Profiled data sources", operation="data_profile", processed=result.processed, profiled=result.profiled)
+    _finish(summary, summary_path, next_action="Inspect outputs/data-profiles/.")
+    if not quiet:
+        console.print(
+            f"[green]Data profile complete[/green] processed={result.processed} "
+            f"profiled={result.profiled} skipped={result.skipped}"
+        )
+
+
+@data_app.command("list")
+def data_list(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List registered local data sources."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["data", "list"], ws, log_level)
+    rows = list_data_sources(ws)
+    logger.info("Listed data sources", operation="data_list", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Data sources")
+    table.add_column("source_id")
+    table.add_column("type")
+    table.add_column("profile")
+    table.add_column("file_name")
+    for source in rows:
+        profile = source.get("data_profile") if isinstance(source.get("data_profile"), dict) else {}
+        table.add_row(
+            str(source.get("source_id")),
+            str(source.get("file_ext")),
+            str(profile.get("status", "unprofiled")),
+            str(source.get("file_name")),
+        )
+    console.print(table)
+
+
+@data_app.command("status")
+def data_status(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Show local data source profile counts."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["data", "status"], ws, log_level)
+    counts = data_source_counts(ws)
+    logger.info("Computed data source counts", operation="data_status", counts=counts)
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Data source status")
+    table.add_column("status")
+    table.add_column("count", justify="right")
+    for key, value in counts.items():
+        table.add_row(key, str(value))
+    console.print(table)
 
 
 @zotero_app.command("collections")

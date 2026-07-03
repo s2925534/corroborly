@@ -15,7 +15,7 @@ from researchboss.engine.zotero import (
 )
 
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".csv", ".sqlite", ".db"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".csv", ".sqlite", ".db", ".json"}
 SOURCE_STATUSES = {"pending_review", "accepted", "ignored", "maybe"}
 REVIEW_STATUSES = {"accepted", "ignored", "maybe"}
 INITIAL_SOURCE_STATUSES = {"pending_review", "maybe"}
