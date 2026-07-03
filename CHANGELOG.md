@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Bumped project version to 0.5.0.
+- Added Phase 5 OpenAI foundation: `researchboss ai test`, environment/`.env` key loading, explicit `--ai` live-check opt-in, safe context preview generation, and privacy-boundary tests.
 - Bumped project version to 0.4.1.
 - Added `docs/api/CONTRACT.md` with the planned local FastAPI boundary, endpoint groups, shared-engine expectations, read-only Zotero constraints, and disabled future AI route rules.
 - Bumped project version to 0.4.0.

@@ -100,15 +100,15 @@
 
 ## Phase 5: Optional OpenAI Features
 
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> `researchboss ai test`.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Read</span> `OPENAI_API_KEY` from the environment without printing or logging it.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Keep</span> OpenAI disabled unless explicitly enabled.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Keep</span> Anthropic, Claude, and local LLM providers as future flags only.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> a safe context builder that never sends whole PDFs, CSVs, or SQLite databases.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add `researchboss ai test`.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Read `OPENAI_API_KEY` from the environment or local `.env` without printing or logging it.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Keep OpenAI disabled unless explicitly requested with `--ai`.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Keep Anthropic, Claude, and local LLM providers as future flags only.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add a safe context preview builder that never sends whole PDFs, CSVs, SQLite databases, or original files by default.
 - [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> optional AI-assisted review.
 - [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> optional novelty assessment backed by `novelty-ledger.yaml`.
 - [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI-assisted research question strength, novelty, field usefulness, and evidence-quality review after privacy-boundary tests exist.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> tests for missing API key behavior and privacy boundaries.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add tests for missing API key behavior, key non-disclosure, explicit `--ai`, and safe-context privacy boundaries.
 
 ## Phase 6: FastAPI Local Backend
 

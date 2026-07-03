@@ -1,6 +1,6 @@
 # ResearchBoss Detailed Roadmap
 
-Project version: 0.4.1
+Project version: 0.5.0
 
 Last updated: 2026-07-03
 
@@ -48,17 +48,19 @@ Implemented:
 - Source review statuses: `pending_review`, `accepted`, `maybe`, `ignored`.
 - Workspace discovery, selection, and local default workspace memory.
 - JSONL logs and YAML run summaries.
+- OpenAI readiness checks through `researchboss ai test`, with live requests requiring explicit `--ai`.
+- Safe AI context preview generation that excludes original files, whole documents, whole CSVs, and whole SQLite databases by default.
 - README, AGENTS.md, architecture notes, TODO, changelog, and tests.
 - Planned local FastAPI API contract in `docs/api/CONTRACT.md`.
 
 Partially implemented:
 
 - Zotero support: local storage-folder, read-only SQLite support, and read-only Zotero Web API collection listing/selection exist.
-- AI setup: local preference metadata exists; AI behavior is not implemented.
+- AI setup: OpenAI readiness and safe context preview exist; AI-assisted research behavior is not implemented.
 
 Not implemented:
 
-- Optional OpenAI workflows.
+- Optional AI-assisted review, novelty assessment, and research-question strength workflows.
 - FastAPI backend.
 - Cross-platform UI.
 - Packaging.
@@ -249,20 +251,22 @@ Future:
 
 ### Phase 5: Optional OpenAI Features
 
-Status: not implemented.
+Status: foundation started.
 
 Implemented:
 
 - Local AI preference metadata only.
 - AI disabled in generated app settings.
+- `researchboss ai test`.
+- `OPENAI_API_KEY` loading from environment or local `.env` without printing or logging the key.
+- Explicit `--ai` opt-in for live OpenAI credential checks.
+- `researchboss ai context-preview --ai` for local safe-context preview generation.
+- Privacy-boundary tests for missing keys, key non-disclosure, explicit `--ai`, and whole-document/dataset exclusion.
 
 Next work:
 
-- `researchboss ai test`.
-- Environment-based `OPENAI_API_KEY` handling.
-- Safe context builder.
 - Optional review and novelty flows.
-- Tests for privacy boundaries.
+- AI-assisted research question strength and evidence-quality review after additional workflow-specific tests.
 
 ### Phase 6: FastAPI Local Backend
 
@@ -339,7 +343,7 @@ Next work:
 | `researchboss artefacts create` | Implemented | Deterministic non-AI artefact creation from existing workspace state. |
 | `researchboss review` | Missing | Later integrated review workflow. |
 | `researchboss assess-novelty` | Missing | Phase 5. |
-| `researchboss ai test` | Missing | Phase 5. |
+| `researchboss ai test` | Implemented | Local readiness check; live OpenAI request requires explicit `--ai`. |
 
 ## 6. Config and Workspace Audit
 
@@ -426,7 +430,7 @@ Implemented:
 
 ## 11. AI and OpenAI Audit
 
-Status: not implemented.
+Status: foundation started.
 
 Implemented:
 
@@ -434,15 +438,18 @@ Implemented:
 - `ai.enabled: false` in local app settings.
 - `.env` ignored.
 - `.env.example` exists.
+- `OPENAI_API_KEY` loaded from environment or local `.env`.
+- API key is not printed or logged.
+- `researchboss ai test` writes a local readiness report.
+- `researchboss ai context-preview --ai` writes a local safe context preview without making an OpenAI request.
+- Tests cover missing key behavior, key non-disclosure, explicit `--ai`, and no default whole-document/dataset inclusion.
 
 Missing:
 
-- OpenAI provider setup command.
-- API key validation.
-- Safe context builder.
+- AI-assisted source review.
 - Novelty assessment.
 - Corpus summary behavior.
-- Privacy-boundary tests.
+- AI-assisted research-question strength, field usefulness, and evidence-quality review.
 
 Planned AI options:
 
