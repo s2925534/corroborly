@@ -111,3 +111,24 @@ endstream endobj
     assert "First page text." in output
     assert "--- Page 2 ---" in output
     assert "Second page text." in output
+
+
+def test_convert_sources_skips_unchanged_cached_output(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "notes.txt"
+    source_file.write_text("original", encoding="utf-8")
+    scan_sources(workspace, source_root)
+
+    first = convert_sources(workspace)
+    source = read_yaml(workspace / "source-register.yaml")["sources"][0]
+    output_path = Path(source["conversion"]["output_path"])
+    output_path.write_text("manual marker", encoding="utf-8")
+    second = convert_sources(workspace)
+
+    assert first.converted == 1
+    assert second.converted == 0
+    assert second.skipped == 1
+    assert second.results[0].status == "skipped_unchanged"
+    assert output_path.read_text(encoding="utf-8") == "manual marker"

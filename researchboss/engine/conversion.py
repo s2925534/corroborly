@@ -123,15 +123,31 @@ def convert_source_record(workspace: Path, source: dict[str, Any]) -> Conversion
     source_id = str(source.get("source_id") or "")
     source_path = Path(str(source.get("file_path") or ""))
     extension = source_path.suffix.lower()
+    content_hash = source.get("content_hash")
     if extension not in CONVERTIBLE_EXTENSIONS:
         source["conversion"] = {
             "status": "not_supported",
             "output_path": None,
+            "content_hash": content_hash,
             "error": None,
         }
         return ConversionResult(source_id=source_id, status="not_supported", output_path=None)
 
     output_path = _conversion_output_path(workspace, source_id)
+    previous = source.get("conversion") if isinstance(source.get("conversion"), dict) else {}
+    if (
+        previous.get("status") == "converted"
+        and previous.get("content_hash") == content_hash
+        and previous.get("output_path")
+        and Path(str(previous["output_path"])).is_file()
+    ):
+        source["conversion"] = {
+            **previous,
+            "status": "skipped_unchanged",
+            "error": None,
+        }
+        return ConversionResult(source_id=source_id, status="skipped_unchanged", output_path=Path(str(previous["output_path"])))
+
     if extension == ".txt":
         _convert_txt(source_path, output_path)
     elif extension == ".md":
@@ -143,6 +159,7 @@ def convert_source_record(workspace: Path, source: dict[str, Any]) -> Conversion
     source["conversion"] = {
         "status": "converted",
         "output_path": str(output_path),
+        "content_hash": content_hash,
         "error": None,
     }
     return ConversionResult(source_id=source_id, status="converted", output_path=output_path)
@@ -160,7 +177,7 @@ def convert_sources(workspace: Path, *, status: Optional[str] = None) -> Convers
     return ConversionRunResult(
         processed=len(results),
         converted=sum(1 for result in results if result.status == "converted"),
-        skipped=sum(1 for result in results if result.status == "not_supported"),
+        skipped=sum(1 for result in results if result.status in {"not_supported", "skipped_unchanged"}),
         failed=sum(1 for result in results if result.status == "failed"),
         results=results,
     )
