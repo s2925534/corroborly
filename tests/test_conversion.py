@@ -80,3 +80,34 @@ def test_convert_sources_converts_docx_to_plain_text(tmp_path: Path) -> None:
     source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
     output = (workspace / "sources_text" / f"{source_id}.txt").read_text(encoding="utf-8")
     assert output == "First paragraph.\nSecond paragraph.\n"
+
+
+def test_convert_sources_converts_pdf_with_page_markers(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.pdf"
+    source_file.write_bytes(
+        b"""%PDF-1.4
+1 0 obj << /Type /Page /Contents 2 0 R >> endobj
+2 0 obj << /Length 44 >> stream
+BT /F1 12 Tf (First page text.) Tj ET
+endstream endobj
+3 0 obj << /Type /Page /Contents 4 0 R >> endobj
+4 0 obj << /Length 45 >> stream
+BT /F1 12 Tf (Second page text.) Tj ET
+endstream endobj
+%%EOF
+"""
+    )
+    scan_sources(workspace, source_root)
+
+    result = convert_sources(workspace)
+
+    assert result.converted == 1
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+    output = (workspace / "sources_text" / f"{source_id}.txt").read_text(encoding="utf-8")
+    assert "--- Page 1 ---" in output
+    assert "First page text." in output
+    assert "--- Page 2 ---" in output
+    assert "Second page text." in output

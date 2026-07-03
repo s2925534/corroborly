@@ -10,7 +10,7 @@ from xml.etree import ElementTree
 from researchboss.core.yamlio import read_yaml, write_yaml
 
 
-CONVERTIBLE_EXTENSIONS = {".txt", ".md", ".docx"}
+CONVERTIBLE_EXTENSIONS = {".txt", ".md", ".docx", ".pdf"}
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,39 @@ def _convert_docx(source_path: Path, output_path: Path) -> None:
     output_path.write_text("\n".join(paragraphs) + ("\n" if paragraphs else ""), encoding="utf-8")
 
 
+def _decode_pdf_text_literal(value: str) -> str:
+    return (
+        value.replace(r"\(", "(")
+        .replace(r"\)", ")")
+        .replace(r"\\", "\\")
+        .replace(r"\n", "\n")
+        .replace(r"\r", "\n")
+        .replace(r"\t", "\t")
+    )
+
+
+def _extract_pdf_stream_text(stream: str) -> str:
+    literals = re.findall(r"\((?:\\.|[^\\)])*\)", stream, flags=re.DOTALL)
+    parts = [_decode_pdf_text_literal(literal[1:-1]) for literal in literals]
+    return " ".join(part.strip() for part in parts if part.strip())
+
+
+def _convert_pdf(source_path: Path, output_path: Path) -> None:
+    raw = source_path.read_bytes().decode("latin-1", errors="ignore")
+    streams = re.findall(r"stream\s*(.*?)\s*endstream", raw, flags=re.DOTALL)
+    pages = []
+    for stream in streams:
+        text = _extract_pdf_stream_text(stream)
+        if text:
+            pages.append(text)
+    output_lines = []
+    for index, page_text in enumerate(pages or [""], start=1):
+        output_lines.append(f"--- Page {index} ---")
+        output_lines.append(page_text)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
+
+
 def convert_source_record(workspace: Path, source: dict[str, Any]) -> ConversionResult:
     source_id = str(source.get("source_id") or "")
     source_path = Path(str(source.get("file_path") or ""))
@@ -105,6 +138,8 @@ def convert_source_record(workspace: Path, source: dict[str, Any]) -> Conversion
         _convert_md(source_path, output_path)
     elif extension == ".docx":
         _convert_docx(source_path, output_path)
+    elif extension == ".pdf":
+        _convert_pdf(source_path, output_path)
     source["conversion"] = {
         "status": "converted",
         "output_path": str(output_path),
