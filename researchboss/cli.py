@@ -59,7 +59,7 @@ from researchboss.engine.external_search import (
     scopus_search,
     write_high_signal_candidate_report,
 )
-from researchboss.engine.guidelines import list_guidelines, register_guideline
+from researchboss.engine.guidelines import GUIDELINE_SCOPES, list_guidelines, register_guideline
 from researchboss.engine.health import workspace_health_report
 from researchboss.engine.metadata import extract_citation_metadata
 from researchboss.engine.metadata_quality import build_keyword_index, citation_consistency_report, duplicate_metadata_report
@@ -735,6 +735,11 @@ def config_migrate(
 def guidelines_add(
     source: str = typer.Argument(..., help="Local guideline file path or http(s) URL."),
     title: Optional[str] = typer.Option(None, "--title", help="Optional guideline title."),
+    scope: list[str] = typer.Option(
+        ["all_purpose"],
+        "--scope",
+        help=f"Guideline scope. Can be repeated. Allowed: {', '.join(sorted(GUIDELINE_SCOPES))}.",
+    ),
     workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path."),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
@@ -744,7 +749,7 @@ def guidelines_add(
     _slug, logger, summary, summary_path, _log_path = _run_ctx(["guidelines", "add"], ws, log_level)
 
     try:
-        result = register_guideline(ws, source, title=title)
+        result = register_guideline(ws, source, title=title, scopes=scope)
         logger.info(
             "Registered guideline",
             operation="guidelines_add",
@@ -786,12 +791,14 @@ def guidelines_list(
     table.add_column("id")
     table.add_column("title")
     table.add_column("kind")
+    table.add_column("scopes")
     table.add_column("text_path")
     for row in rows:
         table.add_row(
             str(row.get("id")),
             str(row.get("title")),
             str(row.get("source_kind")),
+            ", ".join(row.get("scopes") or []),
             str(row.get("text_path")),
         )
     console.print(table)

@@ -13,6 +13,17 @@ from researchboss.engine.conversion import CONVERTIBLE_EXTENSIONS, extract_text
 
 
 GUIDELINE_TEXT_EXTENSIONS = CONVERTIBLE_EXTENSIONS | {".html", ".htm"}
+GUIDELINE_SCOPES = {
+    "validation",
+    "citation",
+    "structure",
+    "style",
+    "journal_submission",
+    "thesis",
+    "supervisor",
+    "rubric",
+    "all_purpose",
+}
 
 
 @dataclass(frozen=True)
@@ -22,7 +33,13 @@ class GuidelineRegistration:
     text_path: Path
 
 
-def register_guideline(workspace: Path, source: str, *, title: str | None = None) -> GuidelineRegistration:
+def register_guideline(
+    workspace: Path,
+    source: str,
+    *,
+    title: str | None = None,
+    scopes: list[str] | None = None,
+) -> GuidelineRegistration:
     source = source.strip()
     if not source:
         raise ValueError("Guideline source is required.")
@@ -31,6 +48,7 @@ def register_guideline(workspace: Path, source: str, *, title: str | None = None
     registry = read_yaml(registry_path) if registry_path.exists() else {"version": 1, "guidelines": []}
     guidelines = [item for item in registry.get("guidelines", []) if isinstance(item, dict)]
     guideline_id = f"guideline-{len(guidelines) + 1:03d}"
+    resolved_scopes = _validate_scopes(scopes or ["all_purpose"])
 
     if _is_url(source):
         snapshot_path = _snapshot_remote(workspace, guideline_id, source)
@@ -57,6 +75,7 @@ def register_guideline(workspace: Path, source: str, *, title: str | None = None
         "snapshot_path": str(snapshot_path),
         "text_path": str(text_path),
         "file_ext": snapshot_path.suffix.lower().lstrip("."),
+        "scopes": resolved_scopes,
         "ai_used": False,
     }
     guidelines.append(record)
@@ -121,3 +140,15 @@ def _default_title(source: str, snapshot_path: Path) -> str:
 
 def _is_url(source: str) -> bool:
     return source.startswith("http://") or source.startswith("https://")
+
+
+def _validate_scopes(scopes: list[str]) -> list[str]:
+    normalized = []
+    for scope in scopes:
+        item = scope.strip().lower().replace("-", "_").replace(" ", "_")
+        if item not in GUIDELINE_SCOPES:
+            allowed = ", ".join(sorted(GUIDELINE_SCOPES))
+            raise ValueError(f"Invalid guideline scope: {scope!r}. Expected one of: {allowed}")
+        if item not in normalized:
+            normalized.append(item)
+    return normalized

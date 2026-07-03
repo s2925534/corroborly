@@ -69,7 +69,18 @@ def test_cli_guidelines_add_and_list(tmp_path: Path) -> None:
 
     add_result = runner.invoke(
         app,
-        ["guidelines", "add", str(guideline), "--title", "Style Rules", "--workspace", str(workspace), "--quiet"],
+        [
+            "guidelines",
+            "add",
+            str(guideline),
+            "--title",
+            "Style Rules",
+            "--scope",
+            "style",
+            "--workspace",
+            str(workspace),
+            "--quiet",
+        ],
     )
     list_result = runner.invoke(app, ["guidelines", "list", "--workspace", str(workspace), "--quiet"])
 
@@ -77,6 +88,7 @@ def test_cli_guidelines_add_and_list(tmp_path: Path) -> None:
     assert list_result.exit_code == 0, list_result.output
     registry = read_yaml(workspace / "guidelines" / "guidelines.yaml")
     assert registry["guidelines"][0]["title"] == "Style Rules"
+    assert registry["guidelines"][0]["scopes"] == ["style"]
     assert Path(registry["guidelines"][0]["snapshot_path"]).is_file()
     assert Path(registry["guidelines"][0]["text_path"]).is_file()
 
