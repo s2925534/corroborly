@@ -67,6 +67,15 @@ def test_cli_ai_context_preview_requires_ai_flag(tmp_path: Path) -> None:
     assert result.exit_code == 2, result.output
 
 
+def test_cli_ai_review_requires_ai_flag(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    result = runner.invoke(app, ["ai", "review", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 2, result.output
+
+
 def test_cli_ai_context_preview_writes_local_context_without_network(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     source_root = tmp_path / "sources"

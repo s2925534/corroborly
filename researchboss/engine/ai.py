@@ -85,6 +85,69 @@ def openai_get(
         raise OpenAiError("OpenAI returned invalid JSON") from exc
 
 
+def openai_post(
+    path: str,
+    credentials: OpenAiCredentials,
+    body: dict[str, Any],
+    *,
+    opener: Callable[[Request], Any] | None = None,
+    base_url: str = OPENAI_API_BASE_URL,
+) -> Any:
+    url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+    request = Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {credentials.api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    fetch = opener or urlopen
+    try:
+        with fetch(request) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise OpenAiError(f"OpenAI request failed with HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise OpenAiError(f"OpenAI request failed: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise OpenAiError("OpenAI returned invalid JSON") from exc
+
+
+def default_openai_model(workspace: Path) -> str:
+    ai_settings = workspace_ai_settings(workspace)
+    providers = ai_settings.get("providers") if isinstance(ai_settings.get("providers"), dict) else {}
+    openai_settings = providers.get("openai") if isinstance(providers.get("openai"), dict) else {}
+    return str(openai_settings.get("default_model") or "gpt-4o-mini")
+
+
+def extract_response_text(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+    output_text = data.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+
+    parts: list[str] = []
+    output = data.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for content_item in content:
+                if not isinstance(content_item, dict):
+                    continue
+                text = content_item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+    return "\n".join(parts)
+
+
 def openai_readiness(
     workspace: Path,
     credentials: OpenAiCredentials,
@@ -204,4 +267,49 @@ def build_safe_context(
             "max_excerpt_chars": max_excerpt_chars,
         },
         "sources": entries,
+    }
+
+
+def _review_prompt(context: dict[str, Any]) -> str:
+    return (
+        "You are assisting with a local-first, evidence-first research workspace.\n"
+        "Use only the provided safe context. Do not infer from unavailable full documents. "
+        "Do not claim novelty or evidence strength certainty. Return concise markdown with sections: "
+        "Scope, Useful Signals, Evidence Gaps, Source Follow-up, Human Review Required.\n\n"
+        f"Safe context JSON:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
+    )
+
+
+def ai_assisted_review(
+    workspace: Path,
+    credentials: OpenAiCredentials,
+    *,
+    max_sources: int = 10,
+    max_excerpt_chars: int = 1200,
+    opener: Callable[[Request], Any] | None = None,
+) -> dict[str, Any]:
+    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
+    model = default_openai_model(workspace)
+    response = openai_post(
+        "responses",
+        credentials,
+        {
+            "model": model,
+            "input": _review_prompt(context),
+        },
+        opener=opener,
+    )
+    review_text = extract_response_text(response)
+    return {
+        "version": 1,
+        "kind": "ai_assisted_review",
+        "provider": "openai",
+        "model": model,
+        "ai_used": True,
+        "requires_user_review": True,
+        "safe_context_policy": context["policy"],
+        "limits": context["limits"],
+        "source_count": len(context["sources"]),
+        "response_id": response.get("id") if isinstance(response, dict) else None,
+        "review": review_text,
     }

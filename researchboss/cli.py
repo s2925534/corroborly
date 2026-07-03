@@ -15,6 +15,7 @@ from researchboss.core.runlog import JsonlLogger, RunSummary, make_run_paths, wr
 from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.ai import (
     OpenAiError,
+    ai_assisted_review,
     build_safe_context,
     openai_credentials,
     openai_readiness,
@@ -724,6 +725,49 @@ def ai_context_preview(
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
         console.print("No OpenAI request was made.")
+
+
+@ai_app.command("review")
+def ai_review(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI review."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Run an AI-assisted source/corpus review from safe context only."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["ai", "review"], ws, log_level)
+    try:
+        require_ai_flag(ai)
+        credentials = openai_credentials(ws)
+        report = ai_assisted_review(
+            ws,
+            credentials,
+            max_sources=max_sources,
+            max_excerpt_chars=max_excerpt_chars,
+        )
+    except OpenAiError as e:
+        logger.error("AI-assisted review failed", operation="ai_review", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+
+    output_path = ws / "outputs" / "validation" / "openai-review.yaml"
+    write_yaml(output_path, report)
+    logger.info(
+        "Wrote AI-assisted review",
+        operation="ai_review",
+        source_count=report["source_count"],
+        model=report["model"],
+    )
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print("[yellow]Human review is required before using this output.[/yellow]")
 
 
 @app.command()

@@ -8,8 +8,11 @@ from researchboss.core.yamlio import read_yaml
 from researchboss.engine.ai import (
     OpenAiCredentials,
     OpenAiError,
+    ai_assisted_review,
     build_safe_context,
+    extract_response_text,
     load_dotenv_values,
+    openai_post,
     openai_credentials,
     openai_readiness,
     require_ai_flag,
@@ -154,3 +157,63 @@ def test_build_safe_context_does_not_include_whole_csv_or_sqlite_files(tmp_path:
     assert "secret,1" not in str(context)
     assert "not a real database" not in str(context)
     assert all(source["excerpt"] is None for source in context["sources"])
+
+
+def test_openai_post_uses_responses_api_without_exposing_key() -> None:
+    def opener(request: Request):
+        assert request.get_method() == "POST"
+        assert request.full_url == "https://api.openai.com/v1/responses"
+        assert request.headers["Authorization"] == "Bearer sk-secret"
+        body = json.loads(request.data.decode("utf-8"))
+        assert body == {"model": "gpt-test", "input": "hello"}
+        return FakeResponse({"id": "resp_123", "output_text": "ok"})
+
+    data = openai_post(
+        "responses",
+        OpenAiCredentials(api_key="sk-secret"),
+        {"model": "gpt-test", "input": "hello"},
+        opener=opener,
+    )
+
+    assert extract_response_text(data) == "ok"
+    assert "sk-secret" not in str(data)
+
+
+def test_extract_response_text_supports_output_content_shape() -> None:
+    data = {"output": [{"content": [{"type": "output_text", "text": "first"}, {"text": "second"}]}]}
+
+    assert extract_response_text(data) == "first\nsecond"
+
+
+def test_ai_assisted_review_uses_safe_context_and_requires_human_review(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("bounded evidence text", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+    set_source_status(workspace, source_id=source_id, new_status="accepted")
+    convert_sources(workspace, status="accepted")
+
+    def opener(request: Request):
+        body = json.loads(request.data.decode("utf-8"))
+        assert body["model"] == "gpt-4o-mini"
+        assert "bounded evidence text" in body["input"]
+        assert str(source_file) not in body["input"]
+        return FakeResponse({"id": "resp_review", "output_text": "Review result"})
+
+    report = ai_assisted_review(
+        workspace,
+        OpenAiCredentials(api_key="sk-secret"),
+        max_sources=1,
+        max_excerpt_chars=100,
+        opener=opener,
+    )
+
+    assert report["kind"] == "ai_assisted_review"
+    assert report["ai_used"] is True
+    assert report["requires_user_review"] is True
+    assert report["review"] == "Review result"
+    assert "sk-secret" not in str(report)
