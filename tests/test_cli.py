@@ -63,6 +63,9 @@ def test_cli_init_and_config_validate(tmp_path: Path) -> None:
     result = runner.invoke(app, ["config", "validate", "--workspace", str(workspace), "--quiet"])
     assert result.exit_code == 0, result.output
 
+    migrate_result = runner.invoke(app, ["config", "migrate", "--workspace", str(workspace), "--quiet"])
+    assert migrate_result.exit_code == 0, migrate_result.output
+
 
 def test_cli_init_defaults_workspace_under_workspaces_dir(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)

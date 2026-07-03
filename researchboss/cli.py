@@ -19,6 +19,7 @@ from researchboss.engine.claims import add_claim, list_claims, write_citation_ga
 from researchboss.engine.conversion import convert_sources
 from researchboss.engine.data import data_source_counts, list_data_sources, profile_data_sources
 from researchboss.engine.metadata import extract_citation_metadata
+from researchboss.engine.migrations import migrate_workspace
 from researchboss.engine.research_questions import (
     approve_research_question,
     archive_research_question,
@@ -582,6 +583,22 @@ def config_validate(
 
     if not quiet:
         console.print(f"[green]OK[/green] Workspace looks valid: {ws}")
+
+
+@config_app.command("migrate")
+def config_migrate(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Fill missing workspace config fields for the current schema."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["config", "migrate"], ws, log_level)
+    changes = migrate_workspace(ws)
+    logger.info("Migrated workspace config", operation="config_migrate", changes=changes)
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Migration complete[/green] changes={len(changes)}")
 
 
 @app.command()
