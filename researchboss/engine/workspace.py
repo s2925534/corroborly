@@ -16,6 +16,26 @@ PRIMARY_OUTPUT_TYPES = ["thesis", "paper", "report", "presentation", "notes", "c
 DATA_FILE_EXPECTATIONS = ["yes", "no", "not sure"]
 AI_PREFERENCES = ["no", "ask me later", "yes but disabled for now"]
 SOURCE_REVIEW_DEFAULTS = ["pending_review", "maybe"]
+MPHIL_STAGES = [
+    "proposal",
+    "literature_review",
+    "methodology",
+    "data_or_sources",
+    "analysis",
+    "writing",
+    "submission",
+]
+PHD_STAGES = [
+    "proposal",
+    "confirmation",
+    "literature_review",
+    "methodology",
+    "data_or_sources",
+    "analysis",
+    "chapter_drafting",
+    "review",
+    "submission",
+]
 
 
 def default_documents_dir(home: Optional[Path] = None) -> Path:
@@ -117,6 +137,16 @@ def _default_app_settings(ai_preference: str = "no") -> dict[str, Any]:
     }
 
 
+def research_stage_template(project_type: str) -> list[dict[str, Any]]:
+    if project_type == "M.Phil":
+        names = MPHIL_STAGES
+    elif project_type == "PhD":
+        names = PHD_STAGES
+    else:
+        names = []
+    return [{"id": f"stage-{index:02d}", "name": name, "status": "not_started"} for index, name in enumerate(names, 1)]
+
+
 def init_workspace(
     workspace: Path,
     *,
@@ -176,7 +206,7 @@ def init_workspace(
     )
 
     write_yaml(workspace / WORKSPACE_FILES.research_state, {"version": 1, "current_stage": None, "last_scan_at": None})
-    write_yaml(workspace / WORKSPACE_FILES.research_stages, {"version": 1, "stages": []})
+    write_yaml(workspace / WORKSPACE_FILES.research_stages, {"version": 1, "stages": research_stage_template(project_type)})
 
     approved_questions = []
     draft_questions = []

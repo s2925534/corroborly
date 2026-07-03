@@ -106,6 +106,25 @@ def test_default_app_settings_keep_ai_optional(tmp_path: Path) -> None:
     assert ".env" in gitignore.splitlines()
 
 
+def test_init_workspace_writes_research_stage_templates(tmp_path: Path) -> None:
+    mphil = tmp_path / "mphil"
+    phd = tmp_path / "phd"
+    custom = tmp_path / "custom"
+
+    init_workspace(mphil, project_name="MPhil", project_type="M.Phil", topic="")
+    init_workspace(phd, project_name="PhD", project_type="PhD", topic="")
+    init_workspace(custom, project_name="Custom", project_type="Custom", topic="")
+
+    mphil_stages = read_yaml(mphil / WORKSPACE_FILES.research_stages)["stages"]
+    phd_stages = read_yaml(phd / WORKSPACE_FILES.research_stages)["stages"]
+    custom_stages = read_yaml(custom / WORKSPACE_FILES.research_stages)["stages"]
+
+    assert [stage["name"] for stage in mphil_stages][:2] == ["proposal", "literature_review"]
+    assert [stage["name"] for stage in phd_stages][:2] == ["proposal", "confirmation"]
+    assert all(stage["status"] == "not_started" for stage in phd_stages)
+    assert custom_stages == []
+
+
 def test_init_workspace_writes_setup_preferences(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(
