@@ -174,7 +174,7 @@
 ## Phase 6: Document Validation, Guidelines, and Citation Assistance
 
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add APA7 as the default project citation style unless the workspace explicitly configures another style.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> document target resolution for future commands such as `researchboss validate <target>`, supporting file paths, artefact IDs, artefact titles, primary output aliases such as `thesis`, `paper`, `report`, `presentation`, and `notes`, and deterministic artefact type names.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add document target resolution for future commands such as `researchboss validate <target>`, supporting file paths, artefact IDs, artefact titles, primary output aliases such as `thesis`, `paper`, `report`, `presentation`, and `notes`, and deterministic artefact type names.
 - [ ] <span style="color: #00897b; font-weight: 600;">Add</span> reusable document validation commands that compare a target document against accepted workspace sources, Zotero-derived workspace sources, and explicitly supplied source paths, with `--workspace` remaining optional when a single/default workspace can be resolved.
 - [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit full-target-document AI opt-in flags with warning output and tests before any command sends a whole thesis, paper, report, or other target document to an AI provider.
 - [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit full-source-document AI opt-in flags with warning output and tests before any command sends whole backing papers, Zotero-derived documents, or user-supplied source files to an AI provider.
