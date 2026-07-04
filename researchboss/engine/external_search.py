@@ -538,9 +538,38 @@ def _authors_from_entry(entry: dict[str, Any]) -> list[dict[str, Any]]:
                 "name": author.get("authname") or author.get("ce:indexed-name") or preferred.get("surname"),
                 "authid": author.get("authid"),
                 "affiliation_id": author.get("afid"),
+                "h_index": _safe_int(author.get("h-index") or author.get("hIndex")) if author.get("h-index") or author.get("hIndex") else None,
             }
         )
     return out
+
+
+def _author_metric_records(authors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    records = []
+    for author in authors:
+        records.append(
+            {
+                "name": author.get("name"),
+                "author_id": author.get("authid"),
+                "affiliation_id": author.get("affiliation_id"),
+                "h_index": author.get("h_index"),
+                "provenance": "scopus_search_entry_author_metadata",
+            }
+        )
+    return records
+
+
+def _venue_metrics(entry: dict[str, Any]) -> dict[str, Any]:
+    source_title = entry.get("prism:publicationName") or entry.get("source-title")
+    metrics = {
+        "source_title": source_title,
+        "citescore": entry.get("citeScore") or entry.get("citescore"),
+        "sjr": entry.get("SJR") or entry.get("sjr"),
+        "snip": entry.get("SNIP") or entry.get("snip"),
+        "quartile": entry.get("quartile") or entry.get("source-quartile"),
+        "provenance": "scopus_search_entry_source_metadata",
+    }
+    return {key: value for key, value in metrics.items() if value not in (None, "", [])}
 
 
 def _links_from_entry(entry: dict[str, Any]) -> list[dict[str, str]]:
@@ -620,6 +649,8 @@ def score_scopus_entry(entry: dict[str, Any], *, current_year: int | None = None
         "pii": pii,
         "open_access": open_access,
         "authors": authors,
+        "author_metrics": _author_metric_records(authors),
+        "venue_metrics": _venue_metrics(entry),
         "quality_score": score,
         "quality_reasons": reasons,
         "full_text_availability": full_text_availability(entry),

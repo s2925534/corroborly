@@ -497,7 +497,11 @@ def test_score_scopus_entry_uses_only_returned_metadata() -> None:
             "prism:doi": "10.1000/test",
             "eid": "2-s2.0-test",
             "openaccess": "0",
-            "author": [{"authname": "Researcher, A.", "authid": "42"}],
+            "citeScore": "8.1",
+            "SJR": "1.2",
+            "SNIP": "1.4",
+            "quartile": "Q1",
+            "author": [{"authname": "Researcher, A.", "authid": "42", "afid": "99", "h-index": "17"}],
         },
         current_year=2026,
     )
@@ -508,6 +512,11 @@ def test_score_scopus_entry_uses_only_returned_metadata() -> None:
     assert candidate["quality_score"] > 0
     assert candidate["metadata_only"] is True
     assert candidate["full_text_availability"]["full_text_retrieved"] is False
+    assert candidate["author_metrics"][0]["h_index"] == 17
+    assert candidate["author_metrics"][0]["provenance"] == "scopus_search_entry_author_metadata"
+    assert candidate["venue_metrics"]["citescore"] == "8.1"
+    assert candidate["venue_metrics"]["quartile"] == "Q1"
+    assert candidate["venue_metrics"]["provenance"] == "scopus_search_entry_source_metadata"
 
 
 def test_scopus_search_logs_no_result_queries_with_refinement_suggestions(tmp_path: Path) -> None:
