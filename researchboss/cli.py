@@ -25,6 +25,7 @@ from researchboss.engine.ai import (
     require_ai_flag,
     require_directory_ai_opt_in,
     require_full_file_ai_opt_in,
+    require_full_source_document_ai_opt_in,
 )
 from researchboss.engine.abstracts import import_abstract_folder
 from researchboss.engine.artefact_creation import SUPPORTED_ARTEFACT_TYPES, create_deterministic_artefact
@@ -1374,6 +1375,54 @@ def search_ai_query_plan(
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
         console.print("[yellow]No external search was executed. Human approval is required.[/yellow]")
+
+
+@search_app.command("ai-candidate-review")
+def search_ai_candidate_review(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI candidate review."),
+    external_search: bool = typer.Option(False, "--external-search", help="Required explicit opt-in for external candidate review."),
+    full_source_document_ai: bool = typer.Option(
+        False,
+        "--full-source-document-ai",
+        help="Explicitly allow future full-source-document AI review. Default uses candidate metadata and abstracts only.",
+    ),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include in safe context."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate AI candidate relevance and novelty review from metadata and abstracts first."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["search", "ai_candidate_review"], ws, log_level)
+    try:
+        require_ai_flag(ai)
+        require_external_search_flag(external_search)
+        if full_source_document_ai:
+            require_full_source_document_ai_opt_in(ai=ai, full_source_document=full_source_document_ai)
+        report = ai_workspace_report(
+            ws,
+            openai_credentials(ws),
+            kind="candidate_validation",
+            max_sources=max_sources,
+            max_excerpt_chars=max_excerpt_chars,
+        )
+        report["full_source_document_ai_opt_in"] = full_source_document_ai
+        report["full_text_mode"] = "explicit_opt_in" if full_source_document_ai else "metadata_and_abstracts_only"
+    except (OpenAiError, ExternalSearchError) as e:
+        logger.error("AI candidate review failed", operation="search_ai_candidate_review", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    output_path = ws / "outputs" / "validation" / "openai-candidate-validation.yaml"
+    write_yaml(output_path, report)
+    logger.info("Wrote AI candidate validation", operation="search_ai_candidate_review", source_count=report["source_count"])
+    _finish(summary, summary_path, next_action=f"Review `{output_path}` before accepting candidate papers.")
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print("[yellow]Candidate status changes were not applied.[/yellow]")
 
 
 @search_app.command("refine-plan")

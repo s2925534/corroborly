@@ -520,6 +520,10 @@ AI_WORKSPACE_REPORTS = {
         "title": "AI-assisted external search query generation and refinement",
         "sections": "Suggested Queries, Refinement Rationale, Excluded Unsafe Context, Search Budget Notes, Human Approval Required",
     },
+    "candidate_validation": {
+        "title": "AI-assisted paper relevance, research-question, idea, and novelty validation",
+        "sections": "Candidate Relevance, Research Question Fit, Idea Validation Signals, Novelty Risks, Human Review Required",
+    },
 }
 
 
@@ -535,6 +539,9 @@ def _workspace_ai_payload(workspace: Path, context: dict[str, Any]) -> dict[str,
         "abstract_candidates": read_yaml(workspace / "outputs" / "recommendations" / "abstract-candidates.yaml")
         if (workspace / "outputs" / "recommendations" / "abstract-candidates.yaml").exists()
         else {"candidates": [], "filtered": [], "skipped": []},
+        "external_candidates": read_yaml(workspace / "outputs" / "recommendations" / "external-paper-candidates.yaml")
+        if (workspace / "outputs" / "recommendations" / "external-paper-candidates.yaml").exists()
+        else {"candidates": []},
     }
 
 
@@ -588,6 +595,7 @@ def ai_workspace_report(
         "claim_count": len(payload["claims"]),
         "artefact_count": len(payload["artefacts"]),
         "abstract_candidate_count": len(payload["abstract_candidates"].get("candidates", [])),
+        "external_candidate_count": len(payload["external_candidates"].get("candidates", [])),
         "research_question_count": len(payload["research_questions"]["approved"])
         + len(payload["research_questions"]["candidates"]),
         "response_id": response.get("id") if isinstance(response, dict) else None,

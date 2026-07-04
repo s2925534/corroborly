@@ -569,6 +569,46 @@ def test_cli_search_ai_query_plan_writes_report_without_running_search(tmp_path:
     assert report["status_changes_applied"] is False
 
 
+def test_cli_search_ai_candidate_review_requires_ai_and_external_search_flags(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    missing_ai = runner.invoke(app, ["search", "ai-candidate-review", "--external-search", "--workspace", str(workspace), "--quiet"])
+    missing_external = runner.invoke(app, ["search", "ai-candidate-review", "--ai", "--workspace", str(workspace), "--quiet"])
+
+    assert missing_ai.exit_code == 2, missing_ai.output
+    assert missing_external.exit_code == 2, missing_external.output
+
+
+def test_cli_search_ai_candidate_review_writes_metadata_first_report(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    monkeypatch.setattr(cli, "openai_credentials", lambda _workspace: object())
+    monkeypatch.setattr(
+        cli,
+        "ai_workspace_report",
+        lambda *_args, **kwargs: {
+            "version": 1,
+            "kind": kwargs["kind"],
+            "source_count": 0,
+            "status_changes_applied": False,
+            "requires_user_review": True,
+        },
+    )
+
+    result = runner.invoke(
+        app,
+        ["search", "ai-candidate-review", "--ai", "--external-search", "--workspace", str(workspace), "--quiet"],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = read_yaml(workspace / "outputs" / "validation" / "openai-candidate-validation.yaml")
+    assert report["kind"] == "candidate_validation"
+    assert report["full_text_mode"] == "metadata_and_abstracts_only"
+    assert report["status_changes_applied"] is False
+
+
 def test_cli_search_scopus_passes_threshold_options(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

@@ -406,3 +406,34 @@ def test_ai_abstract_screening_uses_candidate_register_without_status_changes(tm
     assert report["kind"] == "abstract_screening"
     assert report["abstract_candidate_count"] == 1
     assert report["status_changes_applied"] is False
+
+
+def test_ai_candidate_validation_uses_external_candidates_and_abstracts(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    write_yaml(
+        workspace / "outputs" / "recommendations" / "external-paper-candidates.yaml",
+        {"version": 1, "candidates": [{"candidate_id": "ext-001", "title": "External candidate"}]},
+    )
+    write_yaml(
+        workspace / "outputs" / "recommendations" / "abstract-candidates.yaml",
+        {"version": 1, "candidates": [{"candidate_id": "abs-001", "title": "Abstract candidate"}]},
+    )
+
+    def opener(request: Request):
+        body = json.loads(request.data.decode("utf-8"))
+        assert "External candidate" in body["input"]
+        assert "Abstract candidate" in body["input"]
+        return FakeResponse({"id": "resp_candidates", "output_text": "Candidate review"})
+
+    report = ai_workspace_report(
+        workspace,
+        OpenAiCredentials(api_key="sk-secret"),
+        kind="candidate_validation",
+        opener=opener,
+    )
+
+    assert report["kind"] == "candidate_validation"
+    assert report["external_candidate_count"] == 1
+    assert report["abstract_candidate_count"] == 1
+    assert report["status_changes_applied"] is False
