@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import importlib
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -114,6 +115,45 @@ def _convert_pdf(source_path: Path, output_path: Path) -> None:
 
 
 def _extract_pdf_text(source_path: Path) -> str:
+    for extractor in (_extract_pdf_text_pymupdf, _extract_pdf_text_pypdf):
+        try:
+            text = extractor(source_path)
+        except Exception:
+            text = None
+        if text and text.strip():
+            return text
+    return _extract_pdf_text_conservative(source_path)
+
+
+def _extract_pdf_text_pymupdf(source_path: Path) -> str | None:
+    fitz = importlib.import_module("fitz")
+    doc = fitz.open(str(source_path))
+    try:
+        pages = []
+        for index, page in enumerate(doc, start=1):
+            text = page.get_text("text") if hasattr(page, "get_text") else ""
+            pages.append(f"--- Page {index} ---\n{text.strip()}")
+        return "\n".join(pages).strip() + ("\n" if pages else "")
+    finally:
+        close = getattr(doc, "close", None)
+        if callable(close):
+            close()
+
+
+def _extract_pdf_text_pypdf(source_path: Path) -> str | None:
+    try:
+        pypdf = importlib.import_module("pypdf")
+    except ModuleNotFoundError:
+        pypdf = importlib.import_module("PyPDF2")
+    reader = pypdf.PdfReader(str(source_path))
+    pages = []
+    for index, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() if hasattr(page, "extract_text") else ""
+        pages.append(f"--- Page {index} ---\n{str(text or '').strip()}")
+    return "\n".join(pages).strip() + ("\n" if pages else "")
+
+
+def _extract_pdf_text_conservative(source_path: Path) -> str:
     raw = source_path.read_bytes().decode("latin-1", errors="ignore")
     streams = re.findall(r"stream\s*(.*?)\s*endstream", raw, flags=re.DOTALL)
     pages = []

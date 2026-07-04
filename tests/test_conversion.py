@@ -1,8 +1,10 @@
 from pathlib import Path
+import sys
+import types
 import zipfile
 
 from researchboss.core.yamlio import read_yaml
-from researchboss.engine.conversion import convert_sources
+from researchboss.engine.conversion import convert_sources, extract_text
 from researchboss.engine.sources import scan_sources, set_source_status
 from researchboss.engine.workspace import init_workspace
 
@@ -111,6 +113,49 @@ endstream endobj
     assert "First page text." in output
     assert "--- Page 2 ---" in output
     assert "Second page text." in output
+
+
+def test_extract_pdf_uses_optional_pymupdf_when_available(tmp_path: Path, monkeypatch) -> None:
+    source_file = tmp_path / "paper.pdf"
+    source_file.write_bytes(b"%PDF-1.4 conservative fallback")
+
+    class FakePage:
+        def get_text(self, _mode):
+            return "PyMuPDF page text"
+
+    class FakeDoc(list):
+        def close(self):
+            self.closed = True
+
+    fake_fitz = types.SimpleNamespace(open=lambda _path: FakeDoc([FakePage()]))
+    monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
+
+    output = extract_text(source_file)
+
+    assert "PyMuPDF page text" in output
+
+
+def test_extract_pdf_falls_back_to_pypdf_when_pymupdf_missing(tmp_path: Path, monkeypatch) -> None:
+    source_file = tmp_path / "paper.pdf"
+    source_file.write_bytes(b"%PDF-1.4 conservative fallback")
+
+    class FakePage:
+        def extract_text(self):
+            return "PyPDF page text"
+
+    class FakeReader:
+        pages = [FakePage()]
+
+        def __init__(self, _path):
+            pass
+
+    fake_pypdf = types.SimpleNamespace(PdfReader=FakeReader)
+    monkeypatch.setitem(sys.modules, "pypdf", fake_pypdf)
+    monkeypatch.setitem(sys.modules, "fitz", None)
+
+    output = extract_text(source_file)
+
+    assert "PyPDF page text" in output
 
 
 def test_convert_sources_skips_unchanged_cached_output(tmp_path: Path) -> None:
