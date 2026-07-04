@@ -85,6 +85,7 @@ from researchboss.engine.research_questions import (
     list_research_questions,
     reject_research_question,
 )
+from researchboss.engine.report_schemas import export_report_schemas
 from researchboss.engine.reports import generate_workspace_report
 from researchboss.engine.sources import (
     ScanResult,
@@ -1596,6 +1597,29 @@ def report(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
+
+
+@app.command("report-schemas")
+def report_schemas(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Write report schema and human-review guideline documentation."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["report_schemas"], ws, log_level)
+    result = export_report_schemas(ws)
+    logger.info(
+        "Generated report schemas",
+        operation="report_schemas",
+        yaml_path=str(result.yaml_path),
+        markdown_path=str(result.markdown_path),
+        schema_count=result.schema_count,
+    )
+    _finish(summary, summary_path, next_action=f"Review `{result.markdown_path}`")
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {result.markdown_path}")
+        console.print(f"YAML schemas: {result.yaml_path}")
 
 
 @app.command()

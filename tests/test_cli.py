@@ -30,6 +30,18 @@ def test_cli_doctor_command() -> None:
     assert "is ready" in result.output
 
 
+def test_cli_report_schemas_writes_report_contracts(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    result = runner.invoke(app, ["report-schemas", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    schemas = read_yaml(workspace / "outputs" / "reports" / "report-schemas.yaml")
+    assert "document_validation" in schemas["schemas"]
+    assert "citation_insertion_plan" in schemas["schemas"]
+
+
 def test_cli_validate_writes_document_validation_report(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

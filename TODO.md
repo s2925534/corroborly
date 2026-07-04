@@ -200,7 +200,7 @@
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Add reviewed citation-plan application through commands such as `researchboss cite apply <target>`, creating revised output files by default, updating inline citations, and updating or appending an APA7 references section.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - direct citation application for editable formats such as Markdown, TXT, DOCX, and later ODT, RTF, and LaTeX, while creating editable derivatives such as DOCX or Markdown for PDF, scanned PDF, Pages, or other formats that cannot be safely edited directly.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Add citation safety gates so accepted workspace sources are preferred by default and not-yet-accepted external candidate citations require an explicit flag such as `--allow-candidate-citations`.
-- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - citation and validation output schemas, templates, and report guidelines for document-validation reports, citation-insertion plans, evidence-confidence reports, guideline-conflict reports, and APA7 references sections.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Add citation and validation output schemas, templates, and report guidelines for document-validation reports, citation-insertion plans, evidence-confidence reports, guideline-conflict reports, and APA7 references sections.
 
 ## Phase 7: Workspace SQLite Memory, Indexing, and Sync
 
