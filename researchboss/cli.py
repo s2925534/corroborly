@@ -24,6 +24,7 @@ from researchboss.engine.ai import (
     openai_readiness,
     require_ai_flag,
 )
+from researchboss.engine.abstracts import import_abstract_folder
 from researchboss.engine.artefact_creation import SUPPORTED_ARTEFACT_TYPES, create_deterministic_artefact
 from researchboss.engine.artefacts import artefact_dependency_report, list_artefacts, register_artefact, set_artefact_review_status
 from researchboss.engine.backup import create_workspace_backup, inspect_backup
@@ -163,6 +164,7 @@ ai_app = typer.Typer(help="Optional OpenAI commands.")
 search_app = typer.Typer(help="Explicit opt-in external search commands.")
 guidelines_app = typer.Typer(help="Local guideline registration commands.")
 cite_app = typer.Typer(help="Citation planning commands.")
+abstracts_app = typer.Typer(help="Local abstract import and screening commands.")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
@@ -180,6 +182,7 @@ app.add_typer(ai_app, name="ai")
 app.add_typer(search_app, name="search")
 app.add_typer(guidelines_app, name="guidelines")
 app.add_typer(cite_app, name="cite")
+app.add_typer(abstracts_app, name="abstracts")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -1410,6 +1413,36 @@ def search_import_candidates(
     if not quiet:
         console.print(f"[green]Imported[/green] {report['imported_count']} candidate source(s)")
         console.print(f"Skipped: {report['skipped_count']} Missing: {report['missing_count']}")
+
+
+@abstracts_app.command("import")
+def abstracts_import(
+    folder: Path = typer.Argument(..., help="Local folder containing legacy abstract text files."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Import local abstract text files into a reviewable candidate register."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["abstracts", "import"], ws, log_level)
+    result = import_abstract_folder(ws, folder)
+    summary.files_processed = result.processed
+    summary.files_succeeded = result.candidate
+    summary.files_skipped = result.filtered + result.skipped
+    logger.info(
+        "Imported abstract folder",
+        operation="abstracts_import",
+        processed=result.processed,
+        candidate=result.candidate,
+        filtered=result.filtered,
+        skipped=result.skipped,
+    )
+    _finish(summary, summary_path, next_action=f"Review `{result.register_path}`")
+    if not quiet:
+        console.print(
+            f"[green]Abstract import complete[/green] processed={result.processed} "
+            f"candidate={result.candidate} filtered={result.filtered} skipped={result.skipped}"
+        )
 
 
 @search_app.command("scopus-test")

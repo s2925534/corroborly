@@ -702,6 +702,20 @@ def test_cli_metadata_sidecars_updates_source_metadata(tmp_path: Path) -> None:
     assert (workspace / "sources_metadata" / "sidecar-metadata.yaml").is_file()
 
 
+def test_cli_abstracts_import_writes_candidate_register(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    folder = tmp_path / "abstracts"
+    folder.mkdir()
+    (folder / "good.txt").write_text("Title: Good\nYear: 2024\nAbstract: Useful abstract.\n", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    result = runner.invoke(app, ["abstracts", "import", str(folder), "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    register = read_yaml(workspace / "outputs" / "recommendations" / "abstract-candidates.yaml")
+    assert register["candidate_count"] == 1
+
+
 def test_cli_ai_workspace_report_commands_require_ai_flag(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
