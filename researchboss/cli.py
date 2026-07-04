@@ -59,7 +59,7 @@ from researchboss.engine.external_search import (
     scopus_search,
     write_high_signal_candidate_report,
 )
-from researchboss.engine.guidelines import GUIDELINE_SCOPES, list_guidelines, register_guideline
+from researchboss.engine.guidelines import GUIDELINE_SCOPES, list_guidelines, register_guideline, set_default_guidelines
 from researchboss.engine.health import workspace_health_report
 from researchboss.engine.metadata import extract_citation_metadata
 from researchboss.engine.metadata_quality import build_keyword_index, citation_consistency_report, duplicate_metadata_report
@@ -642,6 +642,16 @@ def validate(
         "--source-path",
         help="Additional source document path to compare against. Can be repeated.",
     ),
+    guideline_ids: list[str] = typer.Option(
+        [],
+        "--guidelines",
+        help="Guideline ID to apply. Can be repeated. Explicit IDs override default guidelines.",
+    ),
+    no_default_guidelines: bool = typer.Option(
+        False,
+        "--no-default-guidelines",
+        help="Do not apply workspace default guidelines.",
+    ),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
 ):
@@ -650,7 +660,14 @@ def validate(
     _slug, logger, summary, summary_path, _log_path = _run_ctx(["validate"], ws, log_level)
 
     try:
-        result = validate_document(ws, target, source_paths=source_path, cwd=Path.cwd())
+        result = validate_document(
+            ws,
+            target,
+            source_paths=source_path,
+            guideline_ids=guideline_ids,
+            use_default_guidelines=not no_default_guidelines,
+            cwd=Path.cwd(),
+        )
         logger.info(
             "Document validation report written",
             operation="validate",
@@ -802,6 +819,36 @@ def guidelines_list(
             str(row.get("text_path")),
         )
     console.print(table)
+
+
+@guidelines_app.command("defaults")
+def guidelines_defaults(
+    guideline_id: list[str] = typer.Argument(..., help="Guideline IDs in default priority order."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Set workspace default guidelines and precedence order."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["guidelines", "defaults"], ws, log_level)
+
+    try:
+        config = set_default_guidelines(ws, list(guideline_id))
+        logger.info(
+            "Set default guidelines",
+            operation="guidelines_defaults",
+            default_guideline_ids=config.get("default_guideline_ids") or [],
+        )
+        _finish(summary, summary_path, next_action="Run `researchboss validate <target>` to apply default guidelines.")
+    except Exception as e:
+        logger.error("Default guideline update failed", operation="guidelines_defaults", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise
+
+    if not quiet:
+        console.print("[green]Default guidelines updated[/green]")
+        console.print(", ".join(config.get("default_guideline_ids") or []) or "None")
 
 
 @ai_app.command("test")

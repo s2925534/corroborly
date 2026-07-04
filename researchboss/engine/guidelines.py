@@ -92,6 +92,55 @@ def list_guidelines(workspace: Path) -> list[dict[str, Any]]:
     return [item for item in registry.get("guidelines", []) if isinstance(item, dict)]
 
 
+def set_default_guidelines(workspace: Path, guideline_ids: list[str]) -> dict[str, Any]:
+    resolved_ids = _validate_guideline_ids(workspace, guideline_ids)
+    context_path = workspace / "research-context.yaml"
+    context = read_yaml(context_path)
+    guideline_config = context.get("guidelines") if isinstance(context.get("guidelines"), dict) else {}
+    guideline_config["default_guideline_ids"] = resolved_ids
+    guideline_config["priority"] = resolved_ids
+    context["guidelines"] = guideline_config
+    write_yaml(context_path, context)
+    return guideline_config
+
+
+def default_guideline_ids(workspace: Path) -> list[str]:
+    context = read_yaml(workspace / "research-context.yaml")
+    guideline_config = context.get("guidelines") if isinstance(context.get("guidelines"), dict) else {}
+    defaults = guideline_config.get("default_guideline_ids") or []
+    return [str(item) for item in defaults if item]
+
+
+def resolve_guidelines(
+    workspace: Path,
+    *,
+    explicit_ids: list[str] | None = None,
+    use_defaults: bool = True,
+    scope: str | None = None,
+) -> list[dict[str, Any]]:
+    explicit_ids = _dedupe(explicit_ids or [])
+    selected_ids = explicit_ids or (default_guideline_ids(workspace) if use_defaults else [])
+    if not selected_ids:
+        return []
+
+    records = {str(item.get("id")): item for item in list_guidelines(workspace) if item.get("id")}
+    missing = [guideline_id for guideline_id in selected_ids if guideline_id not in records]
+    if missing:
+        raise ValueError(f"Unknown guideline id(s): {', '.join(missing)}")
+
+    normalized_scope = _normalize_scope(scope) if scope else None
+    resolved = []
+    for index, guideline_id in enumerate(selected_ids, start=1):
+        record = dict(records[guideline_id])
+        scopes = record.get("scopes") or []
+        if normalized_scope and "all_purpose" not in scopes and normalized_scope not in scopes:
+            continue
+        record["precedence"] = index
+        record["selection_source"] = "explicit" if explicit_ids else "default"
+        resolved.append(record)
+    return resolved
+
+
 def _snapshot_local(workspace: Path, guideline_id: str, source_path: Path) -> Path:
     snapshot_path = workspace / "guidelines" / "snapshots" / f"{guideline_id}{source_path.suffix.lower()}"
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
@@ -145,10 +194,32 @@ def _is_url(source: str) -> bool:
 def _validate_scopes(scopes: list[str]) -> list[str]:
     normalized = []
     for scope in scopes:
-        item = scope.strip().lower().replace("-", "_").replace(" ", "_")
+        item = _normalize_scope(scope)
         if item not in GUIDELINE_SCOPES:
             allowed = ", ".join(sorted(GUIDELINE_SCOPES))
             raise ValueError(f"Invalid guideline scope: {scope!r}. Expected one of: {allowed}")
         if item not in normalized:
             normalized.append(item)
     return normalized
+
+
+def _validate_guideline_ids(workspace: Path, guideline_ids: list[str]) -> list[str]:
+    resolved_ids = _dedupe(guideline_ids)
+    known_ids = {str(item.get("id")) for item in list_guidelines(workspace)}
+    missing = [guideline_id for guideline_id in resolved_ids if guideline_id not in known_ids]
+    if missing:
+        raise ValueError(f"Unknown guideline id(s): {', '.join(missing)}")
+    return resolved_ids
+
+
+def _normalize_scope(scope: str) -> str:
+    return scope.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    deduped = []
+    for item in items:
+        value = str(item).strip()
+        if value and value not in deduped:
+            deduped.append(value)
+    return deduped

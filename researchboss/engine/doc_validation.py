@@ -9,6 +9,7 @@ from typing import Any
 from researchboss.core.yamlio import write_yaml
 from researchboss.engine.conversion import CONVERTIBLE_EXTENSIONS, extract_text
 from researchboss.engine.document_targets import DocumentTarget, resolve_document_target
+from researchboss.engine.guidelines import resolve_guidelines
 from researchboss.engine.references import apa7_reference
 from researchboss.engine.sources import list_sources
 
@@ -60,6 +61,8 @@ def validate_document(
     target: str,
     *,
     source_paths: list[Path] | None = None,
+    guideline_ids: list[str] | None = None,
+    use_default_guidelines: bool = True,
     cwd: Path | None = None,
 ) -> DocumentValidationRun:
     resolved_target = resolve_document_target(workspace, target, cwd=cwd)
@@ -68,12 +71,19 @@ def validate_document(
     source_entries = _validation_sources(workspace, source_paths=source_paths or [])
     comparisons = [_compare_source(target_terms, source) for source in source_entries]
     sentence_checks = _sentence_checks(target_text, comparisons)
+    guidelines = resolve_guidelines(
+        workspace,
+        explicit_ids=guideline_ids,
+        use_defaults=use_default_guidelines,
+        scope="validation",
+    )
 
     report = {
         "version": 1,
         "validation_method": "deterministic_term_overlap",
         "ai_used": False,
         "target": _target_record(resolved_target, target_text, target_terms),
+        "guidelines": _guideline_records(guidelines),
         "summary": _summary(comparisons),
         "strengths": _strengths(comparisons, sentence_checks),
         "weaknesses": _weaknesses(comparisons, sentence_checks),
@@ -124,6 +134,20 @@ def _validation_sources(workspace: Path, *, source_paths: list[Path]) -> list[di
             }
         )
     return entries
+
+
+def _guideline_records(guidelines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": guideline.get("id"),
+            "title": guideline.get("title"),
+            "scopes": guideline.get("scopes") or [],
+            "precedence": guideline.get("precedence"),
+            "selection_source": guideline.get("selection_source"),
+            "text_path": guideline.get("text_path"),
+        }
+        for guideline in guidelines
+    ]
 
 
 def _workspace_source_entry(source: dict[str, Any]) -> dict[str, Any]:
@@ -597,9 +621,39 @@ def _markdown_report(report: dict[str, Any]) -> str:
         f"- Sources with overlap: {summary['sources_with_overlap']}",
         f"- Average overlap score: {summary['average_overlap_score']}",
         "",
-        "## Strengths",
+        "## Guidelines",
         "",
     ]
+    if report["guidelines"]:
+        lines.extend(
+            [
+                "| Precedence | Guideline ID | Title | Selection | Scopes |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for guideline in report["guidelines"]:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(guideline.get("precedence") or "Unknown"),
+                        str(guideline.get("id") or "Unknown"),
+                        _escape_table(str(guideline.get("title") or "Unknown")),
+                        str(guideline.get("selection_source") or "Unknown"),
+                        ", ".join(guideline.get("scopes") or []) or "Unknown",
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("- No default or explicit validation guidelines were applied.")
+    lines.extend(
+        [
+            "",
+        "## Strengths",
+        "",
+        ]
+    )
     for strength in report["strengths"]:
         lines.append(f"- {strength['message']}")
     lines.extend(

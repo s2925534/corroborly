@@ -286,6 +286,10 @@ def init_workspace(
                 "custom_primary_output_type": custom_primary_output_type,
             },
             "citation": {"style": citation_style, "custom_style": custom_citation_style},
+            "guidelines": {
+                "default_guideline_ids": [],
+                "priority": [],
+            },
             "data": {"expects_csv_or_sqlite": expects_data_files},
             "warning_thresholds": {
                 "draft_research_questions": 10,

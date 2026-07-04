@@ -93,6 +93,89 @@ def test_cli_guidelines_add_and_list(tmp_path: Path) -> None:
     assert Path(registry["guidelines"][0]["text_path"]).is_file()
 
 
+def test_cli_guideline_defaults_are_applied_to_validation(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    source_text = workspace / "sources_text" / "source-001.txt"
+    guideline = tmp_path / "validation-guideline.md"
+    guideline.write_text("# Validation\n\nCheck claim support.\n", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target.write_text("Container terminal automation uses berth planning evidence.", encoding="utf-8")
+    source_text.write_text("Berth planning evidence supports container terminal automation.", encoding="utf-8")
+    write_yaml(
+        workspace / "source-register.yaml",
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "provider": "local_folder",
+                    "file_name": "paper.pdf",
+                    "conversion": {"status": "converted", "output_path": str(source_text)},
+                }
+            ],
+        },
+    )
+    add_result = runner.invoke(
+        app,
+        [
+            "guidelines",
+            "add",
+            str(guideline),
+            "--scope",
+            "validation",
+            "--workspace",
+            str(workspace),
+            "--quiet",
+        ],
+    )
+    defaults_result = runner.invoke(
+        app,
+        ["guidelines", "defaults", "guideline-001", "--workspace", str(workspace), "--quiet"],
+    )
+    validate_result = runner.invoke(app, ["validate", str(target), "--workspace", str(workspace), "--quiet"])
+
+    assert add_result.exit_code == 0, add_result.output
+    assert defaults_result.exit_code == 0, defaults_result.output
+    assert validate_result.exit_code == 0, validate_result.output
+    report = read_yaml(workspace / "outputs" / "validation" / "document-validation-draft.yaml")
+    assert report["guidelines"][0]["id"] == "guideline-001"
+    assert report["guidelines"][0]["selection_source"] == "default"
+
+
+def test_cli_validate_explicit_guidelines_override_defaults(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    first = tmp_path / "default.md"
+    second = tmp_path / "explicit.md"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target.write_text("A short draft.", encoding="utf-8")
+    first.write_text("Default validation rules", encoding="utf-8")
+    second.write_text("Explicit validation rules", encoding="utf-8")
+    runner.invoke(app, ["guidelines", "add", str(first), "--scope", "validation", "--workspace", str(workspace), "--quiet"])
+    runner.invoke(app, ["guidelines", "add", str(second), "--scope", "validation", "--workspace", str(workspace), "--quiet"])
+    runner.invoke(app, ["guidelines", "defaults", "guideline-001", "--workspace", str(workspace), "--quiet"])
+
+    result = runner.invoke(
+        app,
+        [
+            "validate",
+            str(target),
+            "--guidelines",
+            "guideline-002",
+            "--workspace",
+            str(workspace),
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = read_yaml(workspace / "outputs" / "validation" / "document-validation-draft.yaml")
+    assert [item["id"] for item in report["guidelines"]] == ["guideline-002"]
+    assert report["guidelines"][0]["selection_source"] == "explicit"
+
+
 def test_cli_ai_test_missing_key_does_not_print_secret(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
