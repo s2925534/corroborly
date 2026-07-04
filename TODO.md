@@ -1,5 +1,12 @@
 # TODO
 
+## Color Guide
+
+- <span style="color: #2e7d32; font-weight: 600;">Done</span> - Completed and already implemented.
+- <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Local, rule-based, non-AI work that can usually be implemented and tested now.
+- <span style="color: #ef6c00; font-weight: 600;">AI</span> - Requires explicit AI design, opt-in flags, privacy warnings, and tests before implementation.
+- <span style="color: #1565c0; font-weight: 600;">API</span> - Requires external API, backend API, UI/API contract, or integration-boundary work.
+
 ## Phase 1: Engine and CLI Foundation
 
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Fix `researchboss/cli.py` indentation errors so the package imports.
@@ -69,20 +76,20 @@
 
 ## Future PDF/Text Processing Learned From `../pdf-merge`
 
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> optional PyMuPDF/PyPDF2-backed PDF extraction for more reliable page text while preserving the current conservative parser as the fallback.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> local OCR readiness checks and an explicit opt-in OCR fallback for scanned PDFs.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> deterministic sidecar metadata parsing for CSL JSON, BibTeX, and RIS files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> deterministic abstract, keyword, publication-title, year, and author extraction from sidecar files and PDF metadata without filling unknown fields.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> accepted-source text corpus export with per-source headers, source IDs, titles, authors, and separators.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> optional PDF merge artefacts for accepted source PDFs, with library-wide and batch merge modes that never rename or move originals.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> merge manifests and CSV reports that record which source IDs were included, skipped, failed, or batched.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> deterministic filename suggestion helpers based on title, author token, year, and source ID without renaming original files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> local abstract-folder import and screening for pre-collected abstracts.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> local abstract-file parsing for legacy Scopus abstract text files with fields such as title, authors, publication, year, DOI, cited-by count, abstract, API URL, and Scopus view URL.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> an abstract candidate register that separates imported abstracts into candidate, filtered, not relevant, skipped, and selected-for-review groups without moving or deleting original files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> accepted-source text corpus export that can write one combined file plus a manifest while preserving individual converted text files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> PDF merge dry-run and manifest-first mode before generating merged artefact PDFs.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> skipped and failed processing reports for protected PDFs, corrupt PDFs, OCR-needed PDFs, missing metadata, and unsupported formats without moving originals.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - optional PyMuPDF/PyPDF2-backed PDF extraction for more reliable page text while preserving the current conservative parser as the fallback.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local OCR readiness checks and an explicit opt-in OCR fallback for scanned PDFs.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - deterministic sidecar metadata parsing for CSL JSON, BibTeX, and RIS files.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - deterministic abstract, keyword, publication-title, year, and author extraction from sidecar files and PDF metadata without filling unknown fields.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - accepted-source text corpus export with per-source headers, source IDs, titles, authors, and separators.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - optional PDF merge artefacts for accepted source PDFs, with library-wide and batch merge modes that never rename or move originals.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - merge manifests and CSV reports that record which source IDs were included, skipped, failed, or batched.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - deterministic filename suggestion helpers based on title, author token, year, and source ID without renaming original files.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local abstract-folder import and screening for pre-collected abstracts.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local abstract-file parsing for legacy Scopus abstract text files with fields such as title, authors, publication, year, DOI, cited-by count, abstract, API URL, and Scopus view URL.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - an abstract candidate register that separates imported abstracts into candidate, filtered, not relevant, skipped, and selected-for-review groups without moving or deleting original files.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - accepted-source text corpus export that can write one combined file plus a manifest while preserving individual converted text files.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - PDF merge dry-run and manifest-first mode before generating merged artefact PDFs.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - skipped and failed processing reports for protected PDFs, corrupt PDFs, OCR-needed PDFs, missing metadata, and unsupported formats without moving originals.
 
 ## Phase 3: Data and Artefacts
 
@@ -134,10 +141,10 @@
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add AI claim-checking assistance against accepted sources and `claims-ledger.yaml` through `researchboss ai claim-check --ai`.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add AI citation gap recommendations using accepted sources, claims, and research questions through `researchboss ai citation-gaps --ai`.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add AI artefact cross-reference review against in-progress artefacts through `researchboss ai artefact-cross-reference --ai`.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit per-run full-file AI opt-in flags with warning output and tests before any original or converted full document can be sent to an AI provider.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit per-run directory AI opt-in flags with warning output and tests before any folder-level content can be sent to an AI provider.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - explicit per-run full-file AI opt-in flags with warning output and tests before any original or converted full document can be sent to an AI provider.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - explicit per-run directory AI opt-in flags with warning output and tests before any folder-level content can be sent to an AI provider.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add AI source relevance recommendations that cite source IDs and never modify source statuses automatically through `researchboss ai source-relevance --ai`.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI-assisted screening for locally imported abstracts, writing recommendations only and never changing abstract candidate statuses automatically.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - AI-assisted screening for locally imported abstracts, writing recommendations only and never changing abstract candidate statuses automatically.
 
 ## Future External Search Work After MVP
 
@@ -154,8 +161,8 @@
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add expanded hard search budgets per run covering API calls, generated queries, refinement rounds, result pages, and elapsed time.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add an external-paper candidate register that stores scored Scopus results separately from accepted local sources until reviewed.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add full-text availability detection from Scopus metadata, DOI links, and open-access links without downloading or scraping paywalled files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> local Zotero matching for external candidate full-text availability detection using only workspace metadata, read-only Zotero metadata, DOI, title, year, and storage-key signals.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> reviewed import commands that copy user-approved external candidate metadata into the source register as metadata-only pending-review sources.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local Zotero matching for external candidate full-text availability detection using only workspace metadata, read-only Zotero metadata, DOI, title, year, and storage-key signals.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - reviewed import commands that copy user-approved external candidate metadata into the source register as metadata-only pending-review sources.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add evidence validation reports that compare external candidates against approved RQs, claims, novelty ledger entries, and current source gaps.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add local reproducibility files for every external search run: thresholds, raw response snapshot, scored candidates, skipped results, no-result or low-result queries, and query validation output.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add import of legacy params files so curated query groups like RQ1/RQ2/RQ3 can seed `researchboss search plan`.
@@ -168,77 +175,77 @@
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add high-signal candidate reports sorted by quality score, RQ coverage, citation count, recency, open-access flag, and metadata completeness.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add candidate deduplication across Scopus runs, local Zotero metadata, source register entries, DOI, EID, title, and year.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add external-search run comparison reports showing which query strategies produced the strongest accepted candidate yield.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> optional AI-assisted query generation and query refinement from safe context only, gated by both `--ai` and `--external-search`.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> optional AI-assisted paper relevance, research-question validation, idea validation, and novelty validation using candidate metadata or abstracts first, with full-text modes requiring explicit per-run opt-in.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - optional AI-assisted query generation and query refinement from safe context only, gated by both `--ai` and `--external-search`.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - optional AI-assisted paper relevance, research-question validation, idea validation, and novelty validation using candidate metadata or abstracts first, with full-text modes requiring explicit per-run opt-in.
 
 ## Phase 6: Document Validation, Guidelines, and Citation Assistance
 
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add APA7 as the default project citation style unless the workspace explicitly configures another style.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add document target resolution for future commands such as `researchboss validate <target>`, supporting file paths, artefact IDs, artefact titles, primary output aliases such as `thesis`, `paper`, `report`, `presentation`, and `notes`, and deterministic artefact type names.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add reusable document validation commands that compare a target document against accepted workspace sources, Zotero-derived workspace sources, and explicitly supplied source paths, with `--workspace` remaining optional when a single/default workspace can be resolved.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit full-target-document AI opt-in flags with warning output and tests before any command sends a whole thesis, paper, report, or other target document to an AI provider.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> explicit full-source-document AI opt-in flags with warning output and tests before any command sends whole backing papers, Zotero-derived documents, or user-supplied source files to an AI provider.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - explicit full-target-document AI opt-in flags with warning output and tests before any command sends a whole thesis, paper, report, or other target document to an AI provider.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - explicit full-source-document AI opt-in flags with warning output and tests before any command sends whole backing papers, Zotero-derived documents, or user-supplied source files to an AI provider.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add validation reports that show strengths, weaknesses, unsupported claims, weakly supported claims, possible contradictions, missing citations, candidate supporting sources, and human-review checklists.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add evidence confidence with separate claim relevance, source credibility, metadata completeness, recency, citation strength, author signals, publication venue signals, paper type, contradiction risk, and accepted-vs-candidate status.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add confidence scores while preserving unknown metadata as unknown rather than inventing author h-index, journal index, venue quality, source type, or credibility claims.
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> Scopus author and venue metrics only under explicit `--external-search` budgets, including author IDs, affiliation IDs, h-index where available, source title, CiteScore/SJR/SNIP/quartile where available, and provenance for each metric.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - Scopus author and venue metrics only under explicit `--external-search` budgets, including author IDs, affiliation IDs, h-index where available, source title, CiteScore/SJR/SNIP/quartile where available, and provenance for each metric.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add APA7 references sections in validation and external-search reports, separating accepted workspace evidence from not-yet-accepted external candidate sources.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add local or remote guideline files, including TXT, Markdown, DOCX, PDF, HTML files, web page links, and remote PDF links, with snapshots and converted text written only inside the workspace.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Add guideline scopes such as validation, citation, structure, style, journal submission rules, thesis rules, supervisor rules, rubric rules, and all-purpose rules.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> guideline defaults and priorities in workspace settings, allowing commands to use default guidelines automatically while supporting `--guidelines`, `--no-default-guidelines`, and guideline precedence.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> safe AI guideline handling that uses extracted guideline excerpts by default and requires explicit full-guidelines opt-in before sending full converted guideline text to AI providers.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> guideline conflicts when APA7, faculty rules, journal rules, supervisor guidance, or other configured guidelines disagree, marking each conflict for human review.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> citation insertion through commands such as `researchboss cite plan <target>`, producing a reviewable citation-insertion plan without editing the original document.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> AI-assisted citation insertion only with explicit target-document opt-in, proposing inline citation locations, linking each insertion to evidence sources, explaining confidence, and writing a local plan for review.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> reviewed citation-plan application through commands such as `researchboss cite apply <target>`, creating revised output files by default, updating inline citations, and updating or appending an APA7 references section.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> direct citation application for editable formats such as Markdown, TXT, DOCX, and later ODT, RTF, and LaTeX, while creating editable derivatives such as DOCX or Markdown for PDF, scanned PDF, Pages, or other formats that cannot be safely edited directly.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> citation safety gates so accepted workspace sources are preferred by default and not-yet-accepted external candidate citations require an explicit flag such as `--allow-candidate-citations`.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> citation and validation output schemas, templates, and report guidelines for document-validation reports, citation-insertion plans, evidence-confidence reports, guideline-conflict reports, and APA7 references sections.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - guideline defaults and priorities in workspace settings, allowing commands to use default guidelines automatically while supporting `--guidelines`, `--no-default-guidelines`, and guideline precedence.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - safe AI guideline handling that uses extracted guideline excerpts by default and requires explicit full-guidelines opt-in before sending full converted guideline text to AI providers.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - guideline conflicts when APA7, faculty rules, journal rules, supervisor guidance, or other configured guidelines disagree, marking each conflict for human review.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - citation insertion through commands such as `researchboss cite plan <target>`, producing a reviewable citation-insertion plan without editing the original document.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - AI-assisted citation insertion only with explicit target-document opt-in, proposing inline citation locations, linking each insertion to evidence sources, explaining confidence, and writing a local plan for review.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - reviewed citation-plan application through commands such as `researchboss cite apply <target>`, creating revised output files by default, updating inline citations, and updating or appending an APA7 references section.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - direct citation application for editable formats such as Markdown, TXT, DOCX, and later ODT, RTF, and LaTeX, while creating editable derivatives such as DOCX or Markdown for PDF, scanned PDF, Pages, or other formats that cannot be safely edited directly.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - citation safety gates so accepted workspace sources are preferred by default and not-yet-accepted external candidate citations require an explicit flag such as `--allow-candidate-citations`.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - citation and validation output schemas, templates, and report guidelines for document-validation reports, citation-insertion plans, evidence-confidence reports, guideline-conflict reports, and APA7 references sections.
 
 ## Phase 7: Workspace SQLite Memory, Indexing, and Sync
 
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> an optional local `researchboss.sqlite` database inside each workspace for indexed memory, fast lookup, search history, validation runs, evidence matches, citation plans, guideline registrations, and document version metadata.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> a SQLite sync policy that preserves YAML and Markdown files as the human-readable workspace source of truth while using SQLite as an index, cache, memory layer, and controlled sync layer.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> SQLite initialization, rebuild, status, and sync commands such as `researchboss db init`, `researchboss db sync`, `researchboss db status`, and `researchboss db rebuild`.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> sync state with file hashes, last synced timestamps, database revisions, file revisions, dirty flags, and conflict status for every YAML or Markdown workspace file mirrored into SQLite.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> SQLite-to-YAML write-back through reviewed pending-change tables rather than allowing silent database edits to overwrite workspace files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> pending-change review commands such as `researchboss db apply-pending --review` and `researchboss db apply-pending --apply`.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> memory tables for old search queries, successful and weak query patterns, user preferences, guideline decisions, citation decisions, validation notes, claim-to-source links, and previous AI-safe context choices.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> document aliases so names such as `thesis`, `chapter 1`, `paper draft`, artefact titles, and file paths resolve consistently across validation, citation, and versioning commands.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> SQLite FTS indexes over converted source text, artefact text, guideline text, claims, references, and document sections for faster local evidence matching before any AI review.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> migration and repair checks for the workspace SQLite database, including rebuild-from-YAML behavior and corruption-safe recovery that does not destroy source-of-truth files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> database privacy checks to ensure API keys, full original documents, Zotero-owned files, and opted-out full-text content are not stored in SQLite unintentionally.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - an optional local `researchboss.sqlite` database inside each workspace for indexed memory, fast lookup, search history, validation runs, evidence matches, citation plans, guideline registrations, and document version metadata.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - a SQLite sync policy that preserves YAML and Markdown files as the human-readable workspace source of truth while using SQLite as an index, cache, memory layer, and controlled sync layer.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - SQLite initialization, rebuild, status, and sync commands such as `researchboss db init`, `researchboss db sync`, `researchboss db status`, and `researchboss db rebuild`.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - sync state with file hashes, last synced timestamps, database revisions, file revisions, dirty flags, and conflict status for every YAML or Markdown workspace file mirrored into SQLite.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - SQLite-to-YAML write-back through reviewed pending-change tables rather than allowing silent database edits to overwrite workspace files.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - pending-change review commands such as `researchboss db apply-pending --review` and `researchboss db apply-pending --apply`.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - memory tables for old search queries, successful and weak query patterns, user preferences, guideline decisions, citation decisions, validation notes, claim-to-source links, and previous AI-safe context choices.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - document aliases so names such as `thesis`, `chapter 1`, `paper draft`, artefact titles, and file paths resolve consistently across validation, citation, and versioning commands.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - SQLite FTS indexes over converted source text, artefact text, guideline text, claims, references, and document sections for faster local evidence matching before any AI review.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - migration and repair checks for the workspace SQLite database, including rebuild-from-YAML behavior and corruption-safe recovery that does not destroy source-of-truth files.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - database privacy checks to ensure API keys, full original documents, Zotero-owned files, and opted-out full-text content are not stored in SQLite unintentionally.
 
 ## Phase 8: Document Vault, Versioning, and Restoration
 
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> a local document vault layout for originals, generated documents, derived text, document versions, diffs, manifests, and AI edit sessions without modifying original user files by default.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> document versions for generated artefacts and user-selected target documents, storing version IDs, parent version IDs, file paths, content hashes, creation reason, source command, model metadata, guideline IDs, validation report IDs, and citation plan IDs.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> automatic document snapshots before AI citation insertion, AI rewriting, deterministic overwrite, restoration, or any other command that creates a modified document copy.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> document version commands such as `researchboss doc version`, `researchboss doc versions`, `researchboss doc diff`, and `researchboss doc restore`.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> restoration behavior that creates a restored copy by default rather than deleting newer versions or overwriting the current document without explicit approval.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> derived text snapshots, section maps, paragraph IDs, claim IDs, reference IDs, and citation insertion anchors for each editable document version to support repeatable AI-assisted editing.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">Add</span> structured AI edit sessions as reviewable operations before applying proposed changes to Markdown, TXT, DOCX, or derived editable outputs.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> version-conscious citation application so each citation insertion creates a new document version linked to the evidence sources, confidence report, and references generated for that run.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> version comparison reports that show how document strengths, weaknesses, unsupported claims, and references changed between two versions.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> document vault versions, manifests, and SQLite metadata into local backups without copying Zotero-owned originals into the workspace unless explicitly requested.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - a local document vault layout for originals, generated documents, derived text, document versions, diffs, manifests, and AI edit sessions without modifying original user files by default.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - document versions for generated artefacts and user-selected target documents, storing version IDs, parent version IDs, file paths, content hashes, creation reason, source command, model metadata, guideline IDs, validation report IDs, and citation plan IDs.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - automatic document snapshots before AI citation insertion, AI rewriting, deterministic overwrite, restoration, or any other command that creates a modified document copy.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - document version commands such as `researchboss doc version`, `researchboss doc versions`, `researchboss doc diff`, and `researchboss doc restore`.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - restoration behavior that creates a restored copy by default rather than deleting newer versions or overwriting the current document without explicit approval.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - derived text snapshots, section maps, paragraph IDs, claim IDs, reference IDs, and citation insertion anchors for each editable document version to support repeatable AI-assisted editing.
+- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - structured AI edit sessions as reviewable operations before applying proposed changes to Markdown, TXT, DOCX, or derived editable outputs.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - version-conscious citation application so each citation insertion creates a new document version linked to the evidence sources, confidence report, and references generated for that run.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - version comparison reports that show how document strengths, weaknesses, unsupported claims, and references changed between two versions.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - document vault versions, manifests, and SQLite metadata into local backups without copying Zotero-owned originals into the workspace unless explicitly requested.
 
 ## Phase 9: FastAPI Local Backend
 
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> a local FastAPI app after engine contracts for validation, citation, SQLite sync, and document versioning are tested.
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> routes for projects, sources, artefacts, research questions, reports, settings, logs, AI, novelty, validation, citation plans, guidelines, SQLite sync status, and document versions.
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> API implementation that reuses engine logic rather than duplicating business logic.
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> API route tests that preserve local-first, no-Zotero-write, no-secret-logging, and explicit-AI-opt-in boundaries.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - a local FastAPI app after engine contracts for validation, citation, SQLite sync, and document versioning are tested.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - routes for projects, sources, artefacts, research questions, reports, settings, logs, AI, novelty, validation, citation plans, guidelines, SQLite sync status, and document versions.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - API implementation that reuses engine logic rather than duplicating business logic.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - API route tests that preserve local-first, no-Zotero-write, no-secret-logging, and explicit-AI-opt-in boundaries.
 
 ## Phase 10: Cross-Platform UI Preparation
 
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> a desktop, web, and mobile UI strategy around local workspaces, validation reports, citation review plans, document versions, and guideline management.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - a desktop, web, and mobile UI strategy around local workspaces, validation reports, citation review plans, document versions, and guideline management.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - Define a clear API contract in `docs/api/CONTRACT.md`.
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> a frontend folder or explicit planned UI structure once the backend boundary is stable.
-- [ ] <span style="color: #1565c0; font-weight: 600;">Add</span> UI architecture guidance that keeps UI logic out of the core engine and routes all workspace mutations through tested engine/API contracts.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - a frontend folder or explicit planned UI structure once the backend boundary is stable.
+- [ ] <span style="color: #1565c0; font-weight: 600;">API</span> - UI architecture guidance that keeps UI logic out of the core engine and routes all workspace mutations through tested engine/API contracts.
 
 ## Phase 11: Packaging
 
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> a packaging plan that accounts for the CLI, local API, workspace SQLite, document vault files, and optional desktop UI.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> PyInstaller or equivalent packaging notes for the Python engine and local API.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> future Flutter desktop packaging notes if the cross-platform UI plan keeps Flutter as the preferred shell.
-- [ ] <span style="color: #00897b; font-weight: 600;">Add</span> Windows, macOS, and Linux considerations for Zotero paths, local file permissions, document conversion, OCR dependencies, SQLite, and backups.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - a packaging plan that accounts for the CLI, local API, workspace SQLite, document vault files, and optional desktop UI.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - PyInstaller or equivalent packaging notes for the Python engine and local API.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - future Flutter desktop packaging notes if the cross-platform UI plan keeps Flutter as the preferred shell.
+- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Windows, macOS, and Linux considerations for Zotero paths, local file permissions, document conversion, OCR dependencies, SQLite, and backups.
