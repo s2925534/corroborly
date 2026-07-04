@@ -476,6 +476,44 @@ def test_cli_search_reports_writes_external_search_reports(tmp_path: Path) -> No
     assert (workspace / "outputs" / "validation" / "external-search-run-comparison.yaml").is_file()
 
 
+def test_cli_search_import_candidates_writes_pending_metadata_source(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="container port evidence")
+    write_yaml(
+        workspace / "outputs" / "recommendations" / "external-paper-candidates.yaml",
+        {
+            "version": 1,
+            "candidates": [
+                {
+                    "candidate_id": "ext-001",
+                    "provider": "scopus",
+                    "title": "Container port evidence",
+                    "year": 2024,
+                    "citation_count": 12,
+                    "quality_score": 40,
+                    "open_access": True,
+                    "doi": "10.1000/example",
+                    "source_title": "Journal of Ports",
+                }
+            ],
+            "runs": [],
+        },
+    )
+
+    result = runner.invoke(
+        app,
+        ["search", "import-candidates", "--candidate-id", "ext-001", "--workspace", str(workspace), "--quiet"],
+    )
+
+    assert result.exit_code == 0, result.output
+    source_register = read_yaml(workspace / "source-register.yaml")
+    assert source_register["sources"][0]["source_id"] == "ext-001"
+    assert source_register["sources"][0]["status"] == "pending_review"
+    assert source_register["sources"][0]["metadata_only"] is True
+    report = read_yaml(workspace / "outputs" / "recommendations" / "external-candidate-import.yaml")
+    assert report["imported_count"] == 1
+
+
 def test_cli_search_scopus_requires_external_search_flag(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

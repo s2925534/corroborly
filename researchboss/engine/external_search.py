@@ -446,6 +446,10 @@ def high_signal_candidate_report_path(workspace: Path) -> Path:
     return workspace / "outputs" / "recommendations" / "external-high-signal-candidates.yaml"
 
 
+def external_candidate_import_report_path(workspace: Path) -> Path:
+    return workspace / "outputs" / "recommendations" / "external-candidate-import.yaml"
+
+
 def external_candidate_duplicates_path(workspace: Path) -> Path:
     return workspace / "outputs" / "validation" / "external-candidate-duplicates.yaml"
 
@@ -822,6 +826,114 @@ def update_external_candidate_register(
     )
     write_yaml(path, register)
     return register
+
+
+def import_external_candidates(workspace: Path, candidate_ids: list[str]) -> dict[str, Any]:
+    if not candidate_ids:
+        raise ExternalSearchError("At least one --candidate-id is required.")
+    candidate_path = external_candidate_register_path(workspace)
+    if not candidate_path.exists():
+        raise ExternalSearchError(f"External candidate register does not exist: {candidate_path}")
+
+    register = read_yaml(candidate_path)
+    candidates = [candidate for candidate in register.get("candidates", []) if isinstance(candidate, dict)]
+    candidate_map = {str(candidate.get("candidate_id")): candidate for candidate in candidates if candidate.get("candidate_id")}
+
+    source_path = workspace / "source-register.yaml"
+    source_register = read_yaml(source_path) if source_path.exists() else {"version": 1, "sources": []}
+    source_register.setdefault("version", 1)
+    source_register.setdefault("sources", [])
+    existing_source_ids = {
+        str(source.get("source_id"))
+        for source in source_register.get("sources", [])
+        if isinstance(source, dict) and source.get("source_id")
+    }
+
+    now = datetime.now(timezone.utc).isoformat()
+    imported = []
+    skipped = []
+    missing = []
+    for candidate_id in _dedupe([str(value) for value in candidate_ids]):
+        candidate = candidate_map.get(candidate_id)
+        if not candidate:
+            missing.append({"candidate_id": candidate_id, "reason": "candidate_not_found"})
+            continue
+        source_id = candidate.get("imported_source_id") or _candidate_source_id(candidate)
+        if source_id in existing_source_ids:
+            candidate["review_status"] = "imported_pending_review"
+            candidate["imported_source_id"] = source_id
+            candidate["imported_at"] = candidate.get("imported_at") or now
+            skipped.append({"candidate_id": candidate_id, "source_id": source_id, "reason": "source_already_exists"})
+            continue
+
+        source_record = _source_record_from_external_candidate(candidate, source_id=str(source_id), imported_at=now)
+        source_register["sources"].append(source_record)
+        existing_source_ids.add(str(source_id))
+        candidate["review_status"] = "imported_pending_review"
+        candidate["imported_source_id"] = source_id
+        candidate["imported_at"] = now
+        imported.append({"candidate_id": candidate_id, "source_id": source_id})
+
+    write_yaml(source_path, source_register)
+    register["candidates"] = candidates
+    write_yaml(candidate_path, register)
+
+    report = {
+        "version": 1,
+        "created_at": now,
+        "requested_candidate_ids": _dedupe([str(value) for value in candidate_ids]),
+        "imported_count": len(imported),
+        "skipped_count": len(skipped),
+        "missing_count": len(missing),
+        "imported": imported,
+        "skipped": skipped,
+        "missing": missing,
+        "notes": "Imported candidates are metadata-only pending-review sources; they are not accepted evidence until reviewed.",
+    }
+    write_yaml(external_candidate_import_report_path(workspace), report)
+    return report
+
+
+def _candidate_source_id(candidate: dict[str, Any]) -> str:
+    candidate_id = str(candidate.get("candidate_id") or "")
+    if candidate_id:
+        return candidate_id
+    digest = hashlib.sha256(json.dumps(candidate, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+    return f"external-candidate-{digest}"
+
+
+def _source_record_from_external_candidate(candidate: dict[str, Any], *, source_id: str, imported_at: str) -> dict[str, Any]:
+    return {
+        "source_id": source_id,
+        "provider": f"external_search:{candidate.get('provider') or 'unknown'}",
+        "file_path": None,
+        "file_name": candidate.get("title") or source_id,
+        "file_ext": "metadata",
+        "content_hash": None,
+        "status": "pending_review",
+        "discovered_at": imported_at,
+        "notes": "Metadata-only source imported from reviewed external candidate register.",
+        "metadata_only": True,
+        "external_candidate_id": candidate.get("candidate_id"),
+        "citation_metadata": {
+            "title": candidate.get("title"),
+            "authors": candidate.get("authors") or [],
+            "year": candidate.get("year"),
+            "doi": candidate.get("doi"),
+            "publication_title": candidate.get("source_title"),
+            "item_type": candidate.get("document_type"),
+            "eid": candidate.get("eid"),
+            "pii": candidate.get("pii"),
+        },
+        "external_search": {
+            "quality_score": candidate.get("quality_score"),
+            "quality_reasons": candidate.get("quality_reasons") or [],
+            "citation_count": candidate.get("citation_count"),
+            "open_access": bool(candidate.get("open_access")),
+            "queries": candidate.get("queries") or [],
+            "full_text_availability": candidate.get("full_text_availability") or {},
+        },
+    }
 
 
 def _budget_exhaustion_reasons(budgets: SearchBudgets, used: dict[str, int], elapsed_seconds: float) -> list[str]:

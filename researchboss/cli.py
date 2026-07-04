@@ -54,6 +54,7 @@ from researchboss.engine.external_search import (
     generate_auto_refine_plan,
     generate_search_query_plan,
     high_signal_candidate_report_path,
+    import_external_candidates,
     require_external_search_flag,
     scopus_credentials,
     scopus_readiness,
@@ -1360,6 +1361,43 @@ def search_reports(
     console.print(f"[green]Wrote[/green] {external_candidate_duplicates_path(ws)}")
     console.print(f"[green]Wrote[/green] {external_evidence_validation_path(ws)}")
     console.print(f"[green]Wrote[/green] {external_run_comparison_path(ws)}")
+
+
+@search_app.command("import-candidates")
+def search_import_candidates(
+    candidate_id: list[str] = typer.Option(
+        [],
+        "--candidate-id",
+        help="External candidate ID to import as a metadata-only pending-review source. Can be repeated.",
+    ),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Import reviewed external candidates into the source register as pending-review metadata-only sources."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["search", "import_candidates"], ws, log_level)
+    try:
+        report = import_external_candidates(ws, candidate_id)
+    except ExternalSearchError as e:
+        logger.error("External candidate import failed", operation="search_import_candidates", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+
+    logger.info(
+        "Imported external candidates",
+        operation="search_import_candidates",
+        imported_count=report["imported_count"],
+        skipped_count=report["skipped_count"],
+        missing_count=report["missing_count"],
+    )
+    _finish(summary, summary_path, next_action="Run `researchboss sources list` and review imported metadata-only sources.")
+    if not quiet:
+        console.print(f"[green]Imported[/green] {report['imported_count']} candidate source(s)")
+        console.print(f"Skipped: {report['skipped_count']} Missing: {report['missing_count']}")
 
 
 @search_app.command("scopus-test")

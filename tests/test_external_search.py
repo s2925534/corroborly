@@ -4,15 +4,17 @@ from urllib.request import Request
 
 import pytest
 
-from researchboss.core.yamlio import read_yaml
+from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.external_search import (
     ExternalSearchError,
     SearchBudgets,
     SearchThresholds,
     ScopusCredentials,
+    external_candidate_register_path,
     filter_unused_queries,
     generate_auto_refine_plan,
     generate_search_query_plan,
+    import_external_candidates,
     parse_legacy_params_file,
     query_history_key,
     record_queries_used,
@@ -191,6 +193,47 @@ def test_scopus_search_writes_snapshot_and_history(tmp_path: Path) -> None:
     validation = read_yaml(workspace / "outputs" / "validation" / "external-search-query-validation.yaml")
     assert validation["validation"]["threshold_pass_rate"] == 1.0
     assert Path(report["metrics"]["batch_summary_path"]).is_file()
+
+
+def test_import_external_candidates_adds_metadata_only_pending_sources(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    candidate_id = "ext-scopus-example"
+    write_candidate_register(
+        workspace,
+        [
+            {
+                "candidate_id": candidate_id,
+                "provider": "scopus",
+                "title": "Container port evidence paper",
+                "year": 2024,
+                "doi": "10.1000/example",
+                "source_title": "Journal of Ports",
+                "document_type": "Article",
+                "citation_count": 25,
+                "quality_score": 80,
+                "authors": [{"name": "Veloso, P.", "authid": "123"}],
+                "full_text_availability": {"doi_present": True},
+            }
+        ],
+    )
+
+    report = import_external_candidates(workspace, [candidate_id, candidate_id])
+    repeated = import_external_candidates(workspace, [candidate_id])
+
+    source_register = read_yaml(workspace / "source-register.yaml")
+    source = source_register["sources"][0]
+    candidate_register = read_yaml(external_candidate_register_path(workspace))
+    candidate = candidate_register["candidates"][0]
+    assert report["imported_count"] == 1
+    assert repeated["skipped_count"] == 1
+    assert len(source_register["sources"]) == 1
+    assert source["source_id"] == candidate_id
+    assert source["status"] == "pending_review"
+    assert source["metadata_only"] is True
+    assert source["citation_metadata"]["doi"] == "10.1000/example"
+    assert candidate["review_status"] == "imported_pending_review"
+    assert candidate["imported_source_id"] == candidate_id
 
 
 def test_scopus_search_updates_batch_summary_across_queries(tmp_path: Path) -> None:
@@ -457,3 +500,9 @@ def test_scopus_search_logs_low_result_queries(tmp_path: Path) -> None:
     assert report["metrics"]["low_results"] is True
     low_results = read_yaml(workspace / "outputs" / "external-search" / "scopus-low-results.yaml")
     assert low_results["queries"][0]["processed"] == 1
+
+
+def write_candidate_register(workspace: Path, candidates: list[dict[str, object]]) -> None:
+    path = external_candidate_register_path(workspace)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_yaml(path, {"version": 1, "candidates": candidates, "runs": []})
