@@ -80,14 +80,14 @@
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local OCR readiness checks and an explicit opt-in OCR fallback for scanned PDFs.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - deterministic sidecar metadata parsing for CSL JSON, BibTeX, and RIS files.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - deterministic abstract, keyword, publication-title, year, and author extraction from sidecar files and PDF metadata without filling unknown fields.
-- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - accepted-source text corpus export with per-source headers, source IDs, titles, authors, and separators.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Add accepted-source text corpus export with per-source headers, source IDs, titles, authors, and separators.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - optional PDF merge artefacts for accepted source PDFs, with library-wide and batch merge modes that never rename or move originals.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - merge manifests and CSV reports that record which source IDs were included, skipped, failed, or batched.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - deterministic filename suggestion helpers based on title, author token, year, and source ID without renaming original files.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local abstract-folder import and screening for pre-collected abstracts.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - local abstract-file parsing for legacy Scopus abstract text files with fields such as title, authors, publication, year, DOI, cited-by count, abstract, API URL, and Scopus view URL.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - an abstract candidate register that separates imported abstracts into candidate, filtered, not relevant, skipped, and selected-for-review groups without moving or deleting original files.
-- [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - accepted-source text corpus export that can write one combined file plus a manifest while preserving individual converted text files.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #00897b; font-weight: 600;">Deterministic</span> - Add accepted-source text corpus export that can write one combined file plus a manifest while preserving individual converted text files.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - PDF merge dry-run and manifest-first mode before generating merged artefact PDFs.
 - [ ] <span style="color: #00897b; font-weight: 600;">Deterministic</span> - skipped and failed processing reports for protected PDFs, corrupt PDFs, OCR-needed PDFs, missing metadata, and unsupported formats without moving originals.
 

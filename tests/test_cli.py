@@ -593,6 +593,35 @@ def test_cli_search_scopus_passes_threshold_options(tmp_path: Path, monkeypatch)
     assert captured["budgets"].max_result_count == 7
 
 
+def test_cli_export_corpus_writes_combined_accepted_text(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    source_text = workspace / "sources_text" / "source-001.txt"
+    source_text.write_text("Accepted converted source text.", encoding="utf-8")
+    write_yaml(workspace / "accepted-sources.yaml", {"version": 1, "source_ids": ["source-001"]})
+    write_yaml(
+        workspace / "source-register.yaml",
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "file_name": "paper.txt",
+                    "conversion": {"status": "converted", "output_path": str(source_text)},
+                }
+            ],
+        },
+    )
+
+    result = runner.invoke(app, ["export-corpus", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert (workspace / "outputs" / "reports" / "accepted-source-corpus.txt").is_file()
+    manifest = read_yaml(workspace / "outputs" / "reports" / "accepted-source-corpus-manifest.yaml")
+    assert manifest["included_count"] == 1
+
+
 def test_cli_ai_workspace_report_commands_require_ai_flag(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

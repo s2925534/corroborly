@@ -38,7 +38,7 @@ from researchboss.engine.conversion import convert_sources
 from researchboss.engine.citations import apply_citation_plan, create_citation_plan
 from researchboss.engine.data import data_source_counts, list_data_sources, profile_data_sources
 from researchboss.engine.doc_validation import validate_document
-from researchboss.engine.export import export_evidence_bundle
+from researchboss.engine.export import export_accepted_source_corpus, export_evidence_bundle
 from researchboss.engine.external_search import (
     ExternalSearchError,
     SearchBudgets,
@@ -1751,6 +1751,30 @@ def export_evidence(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
+
+
+@app.command("export-corpus")
+def export_corpus(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Export accepted converted source text as a combined local corpus with a manifest."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["export", "corpus"], ws, log_level)
+    result = export_accepted_source_corpus(ws)
+    logger.info(
+        "Exported accepted source corpus",
+        operation="export_corpus",
+        corpus_path=str(result.corpus_path),
+        manifest_path=str(result.manifest_path),
+        included_count=result.included_count,
+        skipped_count=result.skipped_count,
+    )
+    _finish(summary, summary_path, next_action=f"Review `{result.manifest_path}`")
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {result.corpus_path}")
+        console.print(f"Manifest: {result.manifest_path}")
 
 
 @app.command("timeline")
