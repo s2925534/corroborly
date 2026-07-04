@@ -175,7 +175,7 @@
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #1565c0; font-weight: 600;">API</span> - Add high-signal candidate reports sorted by quality score, RQ coverage, citation count, recency, open-access flag, and metadata completeness.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #1565c0; font-weight: 600;">API</span> - Add candidate deduplication across Scopus runs, local Zotero metadata, source register entries, DOI, EID, title, and year.
 - [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #1565c0; font-weight: 600;">API</span> - Add external-search run comparison reports showing which query strategies produced the strongest accepted candidate yield.
-- [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - optional AI-assisted query generation and query refinement from safe context only, gated by both `--ai` and `--external-search`.
+- [x] <span style="color: #2e7d32; font-weight: 600;">Done</span> - <span style="color: #ef6c00; font-weight: 600;">AI</span> - Add optional AI-assisted query generation and query refinement from safe context only, gated by both `--ai` and `--external-search`.
 - [ ] <span style="color: #ef6c00; font-weight: 600;">AI</span> - optional AI-assisted paper relevance, research-question validation, idea validation, and novelty validation using candidate metadata or abstracts first, with full-text modes requiring explicit per-run opt-in.
 
 ## Phase 6: Document Validation, Guidelines, and Citation Assistance

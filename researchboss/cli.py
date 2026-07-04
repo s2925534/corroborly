@@ -1337,6 +1337,45 @@ def search_plan(
     console.print(table)
 
 
+@search_app.command("ai-query-plan")
+def search_ai_query_plan(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI query assistance."),
+    external_search: bool = typer.Option(False, "--external-search", help="Required explicit opt-in for external-search planning."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include in safe context."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Generate AI-assisted external-search query suggestions without executing them."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["search", "ai_query_plan"], ws, log_level)
+    try:
+        require_ai_flag(ai)
+        require_external_search_flag(external_search)
+        report = ai_workspace_report(
+            ws,
+            openai_credentials(ws),
+            kind="query_generation",
+            max_sources=max_sources,
+            max_excerpt_chars=max_excerpt_chars,
+        )
+    except (OpenAiError, ExternalSearchError) as e:
+        logger.error("AI query plan failed", operation="search_ai_query_plan", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    output_path = ws / "outputs" / "recommendations" / "openai-external-query-plan.yaml"
+    write_yaml(output_path, report)
+    logger.info("Wrote AI external query plan", operation="search_ai_query_plan", source_count=report["source_count"])
+    _finish(summary, summary_path, next_action=f"Review `{output_path}` before running any external search.")
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+        console.print("[yellow]No external search was executed. Human approval is required.[/yellow]")
+
+
 @search_app.command("refine-plan")
 def search_refine_plan(
     workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),

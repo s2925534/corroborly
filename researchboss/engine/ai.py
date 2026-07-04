@@ -516,6 +516,10 @@ AI_WORKSPACE_REPORTS = {
         "title": "AI-assisted abstract screening",
         "sections": "Likely Relevant Abstracts, Low-Relevance Abstracts, Missing Metadata, Suggested Review Queue, Human Review Required",
     },
+    "query_generation": {
+        "title": "AI-assisted external search query generation and refinement",
+        "sections": "Suggested Queries, Refinement Rationale, Excluded Unsafe Context, Search Budget Notes, Human Approval Required",
+    },
 }
 
 
