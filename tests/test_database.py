@@ -81,6 +81,78 @@ def test_database_has_memory_alias_and_fts_entries(tmp_path: Path) -> None:
     assert fts_hit >= 1
 
 
+def test_database_indexes_validation_citation_and_guidelines(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    guideline_registry = workspace / "guidelines" / "guidelines.yaml"
+    guideline_registry.parent.mkdir(parents=True, exist_ok=True)
+    from researchboss.core.yamlio import write_yaml
+
+    write_yaml(
+        guideline_registry,
+        {
+            "version": 1,
+            "guidelines": [
+                {
+                    "id": "guideline-001",
+                    "title": "Faculty Rules",
+                    "scopes": ["validation"],
+                    "snapshot_path": "guidelines/snapshots/faculty.md",
+                    "text_path": "guidelines/text/faculty.txt",
+                }
+            ],
+        },
+    )
+    write_yaml(
+        workspace / "outputs" / "validation" / "document-validation-draft.yaml",
+        {
+            "version": 1,
+            "target": {"path": "artefacts/papers/draft.md"},
+            "summary": {"source_count": 1},
+            "unsupported_claims": [{"text": "Unsupported"}],
+            "weakly_supported_claims": [],
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "overlap_score": 0.75,
+                    "matched_terms": ["container", "automation"],
+                }
+            ],
+        },
+    )
+    write_yaml(
+        workspace / "outputs" / "citation-plans" / "citation-plan-draft.yaml",
+        {
+            "version": 1,
+            "target": {"path": "artefacts/papers/draft.md"},
+            "plan_status": "review_required",
+            "insertions": [{"source_id": "source-001"}],
+        },
+    )
+
+    sync_database(workspace)
+    status = database_status(workspace)
+
+    with sqlite3.connect(database_path(workspace)) as conn:
+        guideline_count = conn.execute("select count(*) from guideline_registrations").fetchone()[0]
+        validation_count = conn.execute("select count(*) from validation_runs").fetchone()[0]
+        evidence_count = conn.execute("select count(*) from evidence_matches").fetchone()[0]
+        citation_count = conn.execute("select count(*) from citation_plans").fetchone()[0]
+        document_version_count = conn.execute("select count(*) from document_versions").fetchone()[0]
+
+    assert guideline_count == 1
+    assert validation_count == 1
+    assert evidence_count == 1
+    assert citation_count == 1
+    assert document_version_count == 0
+    assert status.report["counts"]["guideline_registrations"] == 1
+    assert status.report["counts"]["validation_runs"] == 1
+    assert status.report["counts"]["evidence_matches"] == 1
+    assert status.report["counts"]["citation_plans"] == 1
+    assert status.report["counts"]["document_versions"] == 0
+
+
 def test_database_pending_changes_are_reviewed_before_apply(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

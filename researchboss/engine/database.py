@@ -133,6 +133,9 @@ def sync_database(workspace: Path) -> DbCommandResult:
 
         _sync_memory_defaults(conn, now)
         _sync_document_aliases(conn, workspace, now)
+        _sync_guideline_registrations(conn, workspace, now)
+        _sync_validation_runs(conn, workspace, now)
+        _sync_citation_plans(conn, workspace, now)
         _sync_fts_indexes(conn, workspace, now)
         _set_meta(conn, "last_sync_at", now)
 
@@ -166,6 +169,12 @@ def database_status(workspace: Path) -> DbCommandResult:
             "sync_files": _count(conn, "sync_files"),
             "pending_changes": _count(conn, "pending_changes", "status = 'pending'"),
             "memory_entries": _count(conn, "memory_entries"),
+            "search_queries": _count(conn, "search_queries"),
+            "validation_runs": _count(conn, "validation_runs"),
+            "evidence_matches": _count(conn, "evidence_matches"),
+            "citation_plans": _count(conn, "citation_plans"),
+            "guideline_registrations": _count(conn, "guideline_registrations"),
+            "document_versions": _count(conn, "document_versions"),
             "document_aliases": _count(conn, "document_aliases"),
             "fts_entries": _count(conn, "fts_index"),
         }
@@ -370,6 +379,61 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             updated_at text not null,
             unique(category, key)
         );
+        create table if not exists search_queries (
+            id integer primary key autoincrement,
+            query text not null,
+            source text not null,
+            status text not null,
+            result_count integer,
+            created_at text not null
+        );
+        create table if not exists validation_runs (
+            report_id text primary key,
+            report_path text not null,
+            target text,
+            source_count integer,
+            unsupported_count integer,
+            weak_count integer,
+            created_at text not null
+        );
+        create table if not exists evidence_matches (
+            id integer primary key autoincrement,
+            report_id text not null,
+            source_id text,
+            match_text text,
+            confidence real,
+            status text,
+            foreign key(report_id) references validation_runs(report_id) on delete cascade
+        );
+        create table if not exists citation_plans (
+            plan_id text primary key,
+            plan_path text not null,
+            target text,
+            insertion_count integer,
+            status text,
+            created_at text not null
+        );
+        create table if not exists guideline_registrations (
+            guideline_id text primary key,
+            title text,
+            scopes_json text not null,
+            snapshot_path text,
+            text_path text,
+            updated_at text not null
+        );
+        create table if not exists document_versions (
+            version_id text primary key,
+            target_path text not null,
+            parent_version_id text,
+            content_hash text,
+            creation_reason text,
+            source_command text,
+            model_metadata_json text not null default '{}',
+            guideline_ids_json text not null default '[]',
+            validation_report_id text,
+            citation_plan_id text,
+            created_at text not null
+        );
         create table if not exists document_aliases (
             alias text primary key,
             target_kind text not null,
@@ -432,6 +496,131 @@ def _sync_document_aliases(conn: sqlite3.Connection, workspace: Path, now: str) 
             _upsert_alias(conn, artefact_id, "artefact_id", path, "artefact_registry", now)
         if title and path:
             _upsert_alias(conn, title.lower(), "artefact_title", path, "artefact_registry", now)
+
+
+def _sync_guideline_registrations(conn: sqlite3.Connection, workspace: Path, now: str) -> None:
+    registry_path = workspace / "guidelines" / "guidelines.yaml"
+    if not registry_path.exists():
+        return
+    data = read_yaml(registry_path)
+    for guideline in data.get("guidelines", []):
+        if not isinstance(guideline, dict) or not guideline.get("id"):
+            continue
+        conn.execute(
+            """
+            insert into guideline_registrations (
+                guideline_id, title, scopes_json, snapshot_path, text_path, updated_at
+            )
+            values (?, ?, ?, ?, ?, ?)
+            on conflict(guideline_id) do update set
+                title = excluded.title,
+                scopes_json = excluded.scopes_json,
+                snapshot_path = excluded.snapshot_path,
+                text_path = excluded.text_path,
+                updated_at = excluded.updated_at
+            """,
+            (
+                str(guideline.get("id")),
+                str(guideline.get("title") or ""),
+                json.dumps(guideline.get("scopes") or [], sort_keys=True),
+                str(guideline.get("snapshot_path") or ""),
+                str(guideline.get("text_path") or ""),
+                now,
+            ),
+        )
+
+
+def _sync_validation_runs(conn: sqlite3.Connection, workspace: Path, now: str) -> None:
+    validation_dir = workspace / "outputs" / "validation"
+    if not validation_dir.is_dir():
+        return
+    for path in sorted(validation_dir.glob("*.yaml")):
+        try:
+            report = read_yaml(path)
+        except Exception:
+            continue
+        if not isinstance(report, dict) or "target" not in report:
+            continue
+        report_id = path.stem
+        summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+        target = report.get("target") if isinstance(report.get("target"), dict) else {}
+        unsupported = report.get("unsupported_claims") if isinstance(report.get("unsupported_claims"), list) else []
+        weak = report.get("weakly_supported_claims") if isinstance(report.get("weakly_supported_claims"), list) else []
+        conn.execute("delete from evidence_matches where report_id = ?", (report_id,))
+        conn.execute(
+            """
+            insert into validation_runs (
+                report_id, report_path, target, source_count, unsupported_count, weak_count, created_at
+            )
+            values (?, ?, ?, ?, ?, ?, ?)
+            on conflict(report_id) do update set
+                report_path = excluded.report_path,
+                target = excluded.target,
+                source_count = excluded.source_count,
+                unsupported_count = excluded.unsupported_count,
+                weak_count = excluded.weak_count
+            """,
+            (
+                report_id,
+                str(path.relative_to(workspace)),
+                str(target.get("path") or target.get("target") or ""),
+                int(summary.get("source_count") or len(report.get("sources") or [])),
+                len(unsupported),
+                len(weak),
+                now,
+            ),
+        )
+        for source in report.get("sources", []):
+            if not isinstance(source, dict):
+                continue
+            matched_terms = source.get("matched_terms") if isinstance(source.get("matched_terms"), list) else []
+            conn.execute(
+                """
+                insert into evidence_matches (report_id, source_id, match_text, confidence, status)
+                values (?, ?, ?, ?, ?)
+                """,
+                (
+                    report_id,
+                    str(source.get("source_id") or ""),
+                    ", ".join(str(term) for term in matched_terms[:20]),
+                    float(source.get("overlap_score") or 0.0),
+                    str(source.get("status") or ""),
+                ),
+            )
+
+
+def _sync_citation_plans(conn: sqlite3.Connection, workspace: Path, now: str) -> None:
+    plans_dir = workspace / "outputs" / "citation-plans"
+    if not plans_dir.is_dir():
+        return
+    for path in sorted(plans_dir.glob("*.yaml")):
+        try:
+            plan = read_yaml(path)
+        except Exception:
+            continue
+        if not isinstance(plan, dict) or "insertions" not in plan:
+            continue
+        target = plan.get("target") if isinstance(plan.get("target"), dict) else {}
+        plan_id = path.stem
+        conn.execute(
+            """
+            insert into citation_plans (plan_id, plan_path, target, insertion_count, status, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            on conflict(plan_id) do update set
+                plan_path = excluded.plan_path,
+                target = excluded.target,
+                insertion_count = excluded.insertion_count,
+                status = excluded.status
+            """,
+            (
+                plan_id,
+                str(path.relative_to(workspace)),
+                str(target.get("path") or ""),
+                len([item for item in plan.get("insertions", []) if isinstance(item, dict)]),
+                str(plan.get("plan_status") or "unknown"),
+                now,
+            ),
+        )
 
 
 def _sync_fts_indexes(conn: sqlite3.Connection, workspace: Path, now: str) -> None:
