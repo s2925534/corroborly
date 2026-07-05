@@ -424,6 +424,6 @@ Editor settings and local environments are intentionally ignored. `.idea/`, `.ve
 
 ResearchBoss is released under the MIT License.
 
-Copyright (c) 2026 Pedro Veloso
+Copyright © 2026 Pedro Veloso
 
 This software is provided free of charge and without warranty of any kind. See `LICENSE` for the full license text.
