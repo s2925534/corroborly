@@ -43,6 +43,15 @@ from researchboss.engine.claims import (
 from researchboss.engine.conversion import convert_sources, extract_text, ocr_readiness_report, processing_issue_report
 from researchboss.engine.citations import apply_citation_plan, create_citation_plan
 from researchboss.engine.data import data_source_counts, list_data_sources, profile_data_sources
+from researchboss.engine.database import (
+    apply_pending_changes,
+    database_privacy_report,
+    database_status,
+    init_database,
+    rebuild_database,
+    sync_database,
+    pending_changes_report,
+)
 from researchboss.engine.doc_validation import validate_document
 from researchboss.engine.export import export_accepted_source_corpus, export_evidence_bundle
 from researchboss.engine.external_search import (
@@ -171,6 +180,7 @@ search_app = typer.Typer(help="Explicit opt-in external search commands.")
 guidelines_app = typer.Typer(help="Local guideline registration commands.")
 cite_app = typer.Typer(help="Citation planning commands.")
 abstracts_app = typer.Typer(help="Local abstract import and screening commands.")
+db_app = typer.Typer(help="Workspace SQLite index and memory commands.")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
@@ -189,6 +199,7 @@ app.add_typer(search_app, name="search")
 app.add_typer(guidelines_app, name="guidelines")
 app.add_typer(cite_app, name="cite")
 app.add_typer(abstracts_app, name="abstracts")
+app.add_typer(db_app, name="db")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -2367,6 +2378,136 @@ def data_status(
     for key, value in counts.items():
         table.add_row(key, str(value))
     console.print(table)
+
+
+@db_app.command("init")
+def db_init(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Initialize the optional workspace SQLite index database."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["db", "init"], ws, log_level)
+    result = init_database(ws)
+    logger.info("Initialized workspace database", operation="db_init", database=str(result.path))
+    _finish(summary, summary_path, next_action="Run `researchboss db sync` to index workspace state.")
+    if not quiet:
+        console.print(f"[green]Database initialized:[/green] {result.path}")
+
+
+@db_app.command("sync")
+def db_sync(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Sync workspace YAML/Markdown metadata into the local SQLite index."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["db", "sync"], ws, log_level)
+    result = sync_database(ws)
+    logger.info("Synced workspace database", operation="db_sync", report=result.report)
+    _finish(summary, summary_path, next_action="Run `researchboss db status` or `researchboss db privacy`.")
+    if not quiet:
+        console.print(f"[green]Database synced:[/green] {result.path}")
+        console.print(
+            f"files={result.report['files_synced']} changed={result.report['files_changed']} "
+            f"missing={result.report['files_missing']} conflicts={result.report['conflicts']}"
+        )
+
+
+@db_app.command("status")
+def db_status(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Show SQLite index health, sync counts, and repair guidance."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["db", "status"], ws, log_level)
+    result = database_status(ws)
+    logger.info("Checked workspace database", operation="db_status", report=result.report)
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Workspace database")
+    table.add_column("Field")
+    table.add_column("Value")
+    for key in ("status", "schema_version", "source_of_truth", "last_sync_at", "integrity_check"):
+        table.add_row(key, str(result.report.get(key)))
+    for key, value in (result.report.get("counts") or {}).items():
+        table.add_row(f"count.{key}", str(value))
+    console.print(table)
+
+
+@db_app.command("rebuild")
+def db_rebuild(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Rebuild the SQLite index from workspace YAML/Markdown source-of-truth files."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["db", "rebuild"], ws, log_level)
+    result = rebuild_database(ws)
+    logger.info("Rebuilt workspace database", operation="db_rebuild", report=result.report)
+    _finish(summary, summary_path, next_action="Run `researchboss db privacy` to inspect database privacy boundaries.")
+    if not quiet:
+        console.print(f"[green]Database rebuilt:[/green] {result.path}")
+
+
+@db_app.command("apply-pending")
+def db_apply_pending(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    review: bool = typer.Option(False, "--review", help="Review pending SQLite-to-file changes without applying."),
+    apply: bool = typer.Option(False, "--apply", help="Apply reviewed pending changes to YAML/Markdown files."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Review or apply explicit pending SQLite-to-YAML/Markdown changes."""
+    if apply and review:
+        console.print("[red]Use either --review or --apply, not both.[/red]")
+        raise typer.Exit(code=2)
+    if not apply:
+        review = True
+
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["db", "apply-pending"], ws, log_level)
+    result = apply_pending_changes(ws, apply=apply) if apply else pending_changes_report(ws)
+    logger.info("Handled pending database changes", operation="db_apply_pending", report=result.report)
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    if review:
+        console.print(f"Pending changes: {result.report.get('pending_count', result.report.get('review_count', 0))}")
+        for item in result.report.get("pending_changes", result.report.get("review", [])):
+            console.print(f"- #{item['id']} {item['relative_path']}: {item['reason']}")
+    else:
+        console.print(f"[green]Applied pending changes:[/green] {result.report['applied_count']}")
+
+
+@db_app.command("privacy")
+def db_privacy(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Check that the SQLite database does not intentionally store secrets or original documents."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["db", "privacy"], ws, log_level)
+    result = database_privacy_report(ws)
+    logger.info("Checked database privacy", operation="db_privacy", report=result.report)
+    if result.report["status"] != "ok":
+        summary.warnings += int(result.report.get("issue_count", 0))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    if result.report["status"] == "ok":
+        console.print("[green]OK[/green] Database privacy checks passed.")
+    else:
+        console.print(f"[yellow]Needs review[/yellow] issues={result.report['issue_count']}")
+        for issue in result.report["issues"]:
+            console.print(f"- {issue['issue']} in {issue.get('table')}.{issue.get('column')}")
 
 
 @rqs_app.command("list")
