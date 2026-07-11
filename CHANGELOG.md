@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Added `RESEARCHBOSS_WORKSPACE_ROOT` so a deployed API instance can be pointed at a mounted volume (e.g. a NAS bind-mount): every `workspace` value must then resolve inside that root, closing a path-traversal gap where any absolute path reachable by the server process was previously accepted as a "workspace." Unset, behavior is unchanged (local-first, any absolute path).
+- Bumped project version to 0.8.4.
 - Added uploaded-artefact intake to the document vault through `researchboss doc upload/uploads`: copies an externally created file into `document_vault/uploads/{originals,renamed}` without ever modifying the upload itself, using a shared `researchboss.engine.filenames` module (extracted from the existing source filename-suggestion logic) for the renamed copy's author/year/title tokens, plus an embedded upload ID that keeps renamed copies collision-free and a numeric-suffix fallback for same-named original copies.
 - Bumped project version to 0.8.3.
 - Added `POST /api/v1/validation/run`, `POST /api/v1/citations/plan|apply`, `GET/POST /api/v1/guidelines/*`, and `GET/POST /api/v1/db/*` routes to the local FastAPI backend — every route in `docs/api/CONTRACT.md` is now implemented except the disabled Future AI Routes section and novelty assessment (which has no deterministic engine path and needs explicit AI opt-in rules, not just a contract addition).

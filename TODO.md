@@ -252,7 +252,7 @@
 - [x] **Done** - **API** - Add `POST /api/v1/auth/login` and `POST /api/v1/auth/logout` routes with secure, expiring session handling (cookie or `Authorization: Bearer` token) and no public self-registration route.
 - [x] **Done** - **Deterministic** - Add login credential handling that keeps the password, session secrets, and tokens out of git, logs, and the SQLite database, consistent with the existing `OPENAI_API_KEY` non-disclosure rules.
 - [x] **Done** - **API** - Add a `GET /health` route with no workspace or auth dependency so NAS deploy/update health checks succeed independently of login state.
-- [ ] **API** - Add a `RESEARCHBOSS_WORKSPACE_ROOT` environment setting so a deployed instance resolves workspaces from a mounted NAS volume path instead of a container-local path, preserving workspace-scoped rules in the deployed environment.
+- [x] **Done** - **API** - Add a `RESEARCHBOSS_WORKSPACE_ROOT` environment setting so a deployed instance resolves workspaces from a mounted NAS volume path instead of a container-local path. When set, every workspace must resolve inside that root (relative paths joined to it, absolute paths outside it rejected with `400 workspace_outside_root`) rather than accepting any path reachable by the server process; unset, behavior matches today's local-first flexibility.
 
 ## Phase 10: Cross-Platform UI Preparation
 

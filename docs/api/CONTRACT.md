@@ -50,6 +50,7 @@ Workspace selection:
 - All workspace-scoped routes accept a `workspace` query parameter or a configured workspace ID later.
 - Initial MVP may use absolute local workspace paths.
 - Future UI layers should pass opaque workspace IDs once a project registry exists.
+- When `RESEARCHBOSS_WORKSPACE_ROOT` is set (e.g. a deployed instance pointed at a mounted NAS volume), `workspace` may be a relative path joined to that root, and every resolved workspace must fall inside it — absolute paths outside the root are rejected with `400 workspace_outside_root` rather than accepted. Without it, any path reachable by the server process is accepted, matching local-first single-user CLI behavior.
 
 Response shape:
 

@@ -876,3 +876,75 @@ def test_db_full_lifecycle_via_api(client: TestClient, tmp_path: Path) -> None:
     rebuild_response = client.post("/api/v1/db/rebuild", params={"workspace": str(workspace)})
     assert rebuild_response.status_code == 200
     assert rebuild_response.json()["data"]["report"]["status"] == "rebuilt"
+
+
+def test_resolve_workspace_accepts_relative_path_inside_configured_root(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "nas-volume"
+    root.mkdir()
+    workspace = root / "project-a"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("RESEARCHBOSS_WORKSPACE_ROOT", str(root))
+
+    response = client.get("/api/v1/projects/status", params={"workspace": "project-a"})
+
+    assert response.status_code == 200
+
+
+def test_resolve_workspace_accepts_absolute_path_inside_configured_root(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "nas-volume"
+    root.mkdir()
+    workspace = root / "project-a"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("RESEARCHBOSS_WORKSPACE_ROOT", str(root))
+
+    response = client.get("/api/v1/projects/status", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+
+
+def test_resolve_workspace_rejects_path_outside_configured_root(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "nas-volume"
+    root.mkdir()
+    outside_workspace = tmp_path / "outside" / "workspace"
+    init_workspace(outside_workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("RESEARCHBOSS_WORKSPACE_ROOT", str(root))
+
+    response = client.get("/api/v1/projects/status", params={"workspace": str(outside_workspace)})
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "workspace_outside_root"
+
+
+def test_resolve_workspace_rejects_traversal_outside_configured_root(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "nas-volume"
+    root.mkdir()
+    outside_workspace = tmp_path / "outside" / "workspace"
+    init_workspace(outside_workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("RESEARCHBOSS_WORKSPACE_ROOT", str(root))
+
+    response = client.get(
+        "/api/v1/projects/status", params={"workspace": "../outside/workspace"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "workspace_outside_root"
+
+
+def test_resolve_workspace_without_configured_root_keeps_local_first_flexibility(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("RESEARCHBOSS_WORKSPACE_ROOT", raising=False)
+    workspace = tmp_path / "anywhere" / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get("/api/v1/projects/status", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200

@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.8.3
+Current version: 0.8.4
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -466,6 +466,8 @@ researchboss serve --host 127.0.0.1 --port 8000
 Every route documented in `docs/api/CONTRACT.md` is implemented except the disabled Future AI Routes section: `GET /health` (no workspace or auth dependency, for deploy/update health checks), `POST /api/v1/auth/login` and `/logout`, plus projects, sources, conversion, metadata, data, research questions, claims, artefacts (including deterministic creation), Zotero (read-only local and Web API, with collection selection written only to the workspace, never to Zotero), document vault, validation, citation plans, guidelines, SQLite sync status, reports, evidence export, backup, and project log (decisions, terminology, feedback, context changelog) routes. Every response uses the envelope `{"ok", "data", "warnings", "errors"}`. Novelty assessment has no deterministic engine path (it's AI-only) and stays out of the contract until it can be added under explicit AI opt-in and privacy-boundary rules, not just a contract addition.
 
 Set `RESEARCHBOSS_API_PASSWORD` (env var or `.env` in the server's working directory) before starting the server. Every `/api/v1` route except `/api/v1/auth/login` requires a valid session and fails closed with `503 auth_not_configured` if no password is set — it never falls back to open access. Log in with `POST /api/v1/auth/login {"password": "..."}` to receive a session (an httponly cookie, and the same token usable as `Authorization: Bearer <token>`); sessions live in server memory only (default 12-hour expiry, `RESEARCHBOSS_API_SESSION_HOURS` to override) and are cleared on server restart. `POST /api/v1/auth/logout` invalidates the current session. There is no public self-registration route.
+
+Set `RESEARCHBOSS_WORKSPACE_ROOT` when deploying against a mounted volume (e.g. a NAS bind-mount): every `workspace` query value must then resolve inside that root — relative paths are joined to it, absolute paths outside it are rejected with `400 workspace_outside_root` — rather than accepting any path reachable by the server process. Leave it unset for local-first single-user CLI-equivalent use, where any absolute path works exactly as it does today.
 
 ## Abstract Screening and External Candidate Import
 
