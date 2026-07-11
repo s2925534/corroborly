@@ -419,6 +419,23 @@ Next work:
 - Produce and test an actual PyInstaller build against the two identified gotchas — the plan is unverified against a real binary.
 - Everything else in this phase is blocked on Phase 10's UI decision or is speculative until then.
 
+### Phase 12: NAS Deployment (research.veloso.dev)
+
+Status: Dockerfile, Compose file, and deploy documentation written; nothing has actually been deployed.
+
+Done:
+
+- `Dockerfile`: `python:3.11-slim`, `pip install .`, single-process `uvicorn researchboss.api.app:app` (no `--workers` — see the file's own comment: session state in `researchboss/api/auth.py` is an in-memory dict, so more than one process/replica would randomly fail logins depending which one handled a given request), a `HEALTHCHECK` hitting `/health`, and `tesseract`/`poppler-utils` installed so the deployed instance can actually use the `--ocr` conversion fallback (unlike a PyInstaller desktop build, a container can bundle these).
+- `docker-compose.yml`: bind-mounts `./data/workspaces` to `/data/workspaces` (matching `RESEARCHBOSS_WORKSPACE_ROOT`) rather than an opaque named volume, so workspace files stay directly inspectable/backupable on the NAS's own filesystem; `RESEARCHBOSS_API_PASSWORD` required via Compose's `:?` syntax (refuses to start rather than silently running without one, consistent with the API's own fail-closed behavior); other `RESEARCHBOSS_*` env vars optional with the same defaults the app itself uses.
+- Extended the existing `.env.example` (already the file `researchboss/api/auth.py`, `zotero_api.py`, and `ai.py` all read via the shared `Path.cwd()/.env` convention) with the new deployment-related variables, rather than inventing a second env-file mechanism.
+- `docs/DEPLOY.md`: local test-before-deploy steps, the exact `synology-site deploy` invocation (`--source-dir` to build on the NAS without needing a registry, `--port 8000` for automatic Cloudflare routing, `--health-path /health`), setting up a workspace per research project via `POST /api/v1/projects/init` against the mounted root, `update`/rollback behavior (session invalidation on restart is expected, not a bug), and why license/developer-info consistency (the last Phase 12 TODO item) is blocked on both an actual deployment and Phase 10 producing a page for a human to load in the first place.
+- Verified what could be verified without Docker (not available in this environment): a genuinely clean-venv `pip install .` followed by running the Dockerfile's exact `CMD` served `/health` successfully. The container build itself (base image, `apt-get` layer, healthcheck) was not verified and is documented as the reader's first step, not claimed as done.
+
+Next work:
+
+- Actually run the `synology-site deploy research.veloso.dev` command above — needs real NAS SSH access and Cloudflare credentials neither this environment nor an unattended session should have.
+- Confirm license/developer-info consistency on the live site once it exists and Phase 10 has a page to check.
+
 ## 5. CLI Audit
 
 | Command | Status | Notes |

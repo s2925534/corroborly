@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Added `Dockerfile`, `docker-compose.yml`, and `docs/DEPLOY.md` for deploying the local API to a NAS via `../synology-site-deployer` (unmodified) as `research.veloso.dev`. Single-process by design (session state is in-memory, so multiple workers/replicas would randomly fail logins); bind-mounts a workspace root matching `RESEARCHBOSS_WORKSPACE_ROOT`; extended the existing `.env.example` rather than inventing a second env-file convention. Verified the Python packaging and exact container `CMD` in a clean venv (serves `/health` successfully); the container build itself was not verified — no Docker available in this environment — and the docs say so rather than implying otherwise. Nothing has actually been deployed; that step needs real NAS/Cloudflare credentials.
+- Bumped project version to 0.9.3.
 - Added `docs/PACKAGING.md` (Phase 11 plan): distribution approaches, a PyInstaller recipe with known uvicorn/`python-multipart` hidden-import gotchas, conditional Flutter desktop sidecar notes (only relevant if Phase 10 picks Flutter), and platform considerations. No packaged build produced or tested yet — planning only.
 - Fixed a real gap found while writing the platform-considerations section: `workspace.zotero_storage_candidates()` had no Linux branch at all (`researchboss init` could never auto-detect a Linux Zotero install). Added native (`~/Zotero/storage`, `~/.zotero/zotero/*/zotero/storage`) and Flatpak (`~/.var/app/org.zotero.Zotero/data/zotero/storage`) candidates.
 - Bumped project version to 0.9.2.

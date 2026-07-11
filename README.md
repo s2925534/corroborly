@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.9.2
+Current version: 0.9.3
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -473,6 +473,8 @@ Set `RESEARCHBOSS_API_PASSWORD` (env var or `.env` in the server's working direc
 
 Set `RESEARCHBOSS_WORKSPACE_ROOT` when deploying against a mounted volume (e.g. a NAS bind-mount): every `workspace` query value must then resolve inside that root — relative paths are joined to it, absolute paths outside it are rejected with `400 workspace_outside_root` — rather than accepting any path reachable by the server process. Leave it unset for local-first single-user CLI-equivalent use, where any absolute path works exactly as it does today.
 
+A `Dockerfile` and `docker-compose.yml` at the repo root package this API for deployment; see `docs/DEPLOY.md` for local testing, the deploy command, per-project workspace setup, and update/rollback steps.
+
 ## Abstract Screening and External Candidate Import
 
 Legacy or externally sourced abstracts can be imported into a reviewable local candidate register before they become workspace sources:
@@ -534,6 +536,7 @@ The detailed living roadmap is maintained in `DETAILED_ROADMAP.md`. Update that 
 9. Local FastAPI backend: every route in `docs/api/CONTRACT.md` implemented via `researchboss serve`, including single-user login protection, validation, citation plans, guidelines, SQLite sync status, `RESEARCHBOSS_WORKSPACE_ROOT` containment, batch artefact upload, and deterministic cross-reference candidates, except the disabled Future AI Routes section. Cross-reference apply (writing reviewed links) needs a design decision — registry metadata vs. document-content insertion — before it can be built. Novelty assessment and AI-assisted cross-reference stay out until they can be added under explicit AI opt-in and privacy-boundary rules.
 10. Prepare a cross-platform UI.
 11. Packaging plan complete (`docs/PACKAGING.md`): PyInstaller recipe with known uvicorn/`python-multipart` gotchas, conditional Flutter sidecar notes, and platform considerations. No packaged build produced or tested yet.
+12. NAS deployment (`research.veloso.dev`): `Dockerfile`, `docker-compose.yml`, and `docs/DEPLOY.md` written, using `../synology-site-deployer` unmodified. Nothing has actually been deployed yet — that step needs real NAS/Cloudflare infrastructure access.
 
 ## Repository Hygiene
 

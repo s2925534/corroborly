@@ -1,0 +1,29 @@
+# ResearchBoss local API, for use with `synology-site deploy` from
+# ../synology-site-deployer (see docs/DEPLOY.md) or plain `docker compose up`.
+#
+# Requires a populated .env alongside this file (copy .env.example) with at
+# least RESEARCHBOSS_API_PASSWORD set -- compose refuses to start otherwise.
+#
+# Single container, single process: see the Dockerfile for why this must
+# never be scaled to multiple replicas or workers.
+
+services:
+  researchboss-api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${RESEARCHBOSS_HOST_PORT:-8000}:8000"
+    environment:
+      RESEARCHBOSS_API_PASSWORD: ${RESEARCHBOSS_API_PASSWORD:?Set RESEARCHBOSS_API_PASSWORD in .env before starting}
+      RESEARCHBOSS_WORKSPACE_ROOT: /data/workspaces
+      RESEARCHBOSS_API_SESSION_HOURS: ${RESEARCHBOSS_API_SESSION_HOURS:-12}
+      RESEARCHBOSS_UPLOAD_MAX_FILES: ${RESEARCHBOSS_UPLOAD_MAX_FILES:-25}
+      RESEARCHBOSS_UPLOAD_MAX_FILE_SIZE_MB: ${RESEARCHBOSS_UPLOAD_MAX_FILE_SIZE_MB:-50}
+    volumes:
+      # Bind-mounted, not a named volume: a researcher may want direct
+      # filesystem access to their own workspace files (backups, inspecting
+      # YAML by hand) via the NAS's own file sharing, not just through the
+      # API. Never bind-mount anything from inside a local Zotero directory
+      # here -- workspaces reference Zotero storage by path, they do not
+      # need Zotero's own directory mounted into this container.
+      - ./data/workspaces:/data/workspaces
