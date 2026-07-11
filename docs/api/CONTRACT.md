@@ -378,6 +378,18 @@ Engine source:
 
 - `researchboss.engine.vault.intake_uploaded_artefact_batch`
 
+### `GET /api/v1/artefacts/cross-reference` (implemented)
+
+Proposes deterministic links between an uploaded artefact (by `upload_id`) and existing artefacts, sources, and claims, based on shared keyword tokens from titles and filenames (claim matches require a stronger overlap, since claim text is long and generic). Read-only: writes a candidate report to `outputs/recommendations/cross-reference-<upload_id>.yaml` but never modifies any artefact, source, or claim record.
+
+Engine source:
+
+- `researchboss.engine.cross_reference.cross_reference_candidates`
+
+### `POST /api/v1/artefacts/cross-reference/apply` (not implemented)
+
+Planned: write reviewed cross-reference links following the review-before-apply pattern used for citation plans. Not yet built because "write the link" is ambiguous in a way the citation-plan precedent doesn't resolve: it could mean adding metadata to the artefact registry (analogous to `linked_sources`) or literally inserting text into methodology/artefact document content (analogous to `cite apply`, which needs per-format `.md`/`.docx`/`.pdf` handling). That choice needs to be made deliberately, not inferred from the read-only candidates route.
+
 ## Zotero Routes
 
 ### `GET /api/v1/zotero/local/collections` (implemented)

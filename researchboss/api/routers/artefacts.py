@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
 
 from researchboss.api.deps import resolve_workspace
@@ -18,6 +18,7 @@ from researchboss.engine.artefacts import (
     register_artefact,
     set_artefact_review_status,
 )
+from researchboss.engine.cross_reference import cross_reference_candidates
 from researchboss.engine.sources import ALLOWED_EXTENSIONS
 from researchboss.engine.vault import intake_uploaded_artefact_batch
 
@@ -194,4 +195,23 @@ async def artefacts_upload(
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+    return ok(report)
+
+
+@router.get("/cross-reference")
+def artefacts_cross_reference(
+    upload_id: str = Query(...),
+    workspace: Path = Depends(resolve_workspace),
+) -> dict[str, Any]:
+    """Propose deterministic links between an uploaded artefact and existing workspace items.
+
+    Read-only: writes a candidate report but never modifies any artefact,
+    source, or claim record. There is no corresponding apply route yet — see
+    docs/api/CONTRACT.md for why that write-back step needs a design
+    decision before it can be built.
+    """
+    try:
+        report = cross_reference_candidates(workspace, upload_id)
+    except ValueError as exc:
+        raise ApiError("unknown_upload_id", str(exc), status_code=404) from exc
     return ok(report)

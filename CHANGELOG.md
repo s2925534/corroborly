@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Added `GET /api/v1/artefacts/cross-reference` (new `researchboss.engine.cross_reference` module): proposes deterministic links between an uploaded artefact and existing artefacts, sources, and claims by keyword overlap in titles/filenames (claim matches require a stronger overlap). Read-only — writes a candidate report but never an artefact, source, or claim record. The `apply` (write-back) route is deliberately not built yet: whether "write the link" means artefact-registry metadata or literal document-content insertion is a real design decision, not inferable from the citation-plan precedent.
+- Bumped project version to 0.9.1.
 - Added `POST /api/v1/artefacts/upload` for batch artefact uploads: multipart file bytes streamed to a bounded-size temp location (never buffered whole in memory), rejecting the whole batch with `400 upload_batch_too_large` before writing anything if it exceeds `RESEARCHBOSS_UPLOAD_MAX_FILES` (default 25), per-file `RESEARCHBOSS_UPLOAD_MAX_FILE_SIZE_MB` (default 50) and extension allow-list enforcement, content-hash duplicate detection, and a per-batch report persisted to `outputs/validation/upload-batch-report.yaml`. Backed by a new `vault.intake_uploaded_artefact_batch` engine function shared with (but not yet exposed by) the CLI.
 - Bumped project version to 0.9.0.
 - Added `RESEARCHBOSS_WORKSPACE_ROOT` so a deployed API instance can be pointed at a mounted volume (e.g. a NAS bind-mount): every `workspace` value must then resolve inside that root, closing a path-traversal gap where any absolute path reachable by the server process was previously accepted as a "workspace." Unset, behavior is unchanged (local-first, any absolute path).

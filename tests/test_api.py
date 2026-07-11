@@ -1037,3 +1037,48 @@ def test_artefacts_upload_enforces_max_file_size_via_api(client: TestClient, tmp
     body = response.json()["data"]
     assert body["rejected"] == 1
     assert body["rows"][0]["reason"] == "file_too_large"
+
+
+def test_artefacts_cross_reference_returns_deterministic_candidates_via_api(
+    client: TestClient, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    upload_response = client.post(
+        "/api/v1/artefacts/upload",
+        params={"workspace": str(workspace)},
+        files=[("files", ("berth-planning-notes.md", b"notes", "text/markdown"))],
+    )
+    upload_id = upload_response.json()["data"]["rows"][0]["upload_id"]
+
+    artefact_path = workspace / "artefacts" / "reports" / "summary.md"
+    artefact_path.parent.mkdir(parents=True, exist_ok=True)
+    artefact_path.write_text("# Summary", encoding="utf-8")
+    client.post(
+        "/api/v1/artefacts",
+        params={"workspace": str(workspace)},
+        json={"title": "Berth Planning Summary", "artefact_type": "report", "path": str(artefact_path)},
+    )
+
+    response = client.get(
+        "/api/v1/artefacts/cross-reference", params={"workspace": str(workspace), "upload_id": upload_id}
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["candidate_count"] == 1
+    assert body["candidates"][0]["target_kind"] == "artefact"
+    assert body["links_written"] is False
+
+
+def test_artefacts_cross_reference_unknown_upload_id_returns_404(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get(
+        "/api/v1/artefacts/cross-reference", params={"workspace": str(workspace), "upload_id": "upload-999"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["errors"][0]["code"] == "unknown_upload_id"
