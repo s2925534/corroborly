@@ -10,7 +10,9 @@ from researchboss.engine.vault import (
     create_document_version,
     diff_document_versions,
     ensure_vault_dirs,
+    intake_uploaded_artefact,
     list_document_versions,
+    list_uploaded_artefacts,
     restore_document_version,
     vault_layout,
 )
@@ -34,7 +36,16 @@ def test_ensure_vault_dirs_matches_layout(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     layout = ensure_vault_dirs(workspace)
-    assert set(layout.keys()) == {"originals", "versions", "derived_text", "diffs", "manifests", "ai_edit_sessions"}
+    assert set(layout.keys()) == {
+        "originals",
+        "versions",
+        "derived_text",
+        "diffs",
+        "manifests",
+        "ai_edit_sessions",
+        "upload_originals",
+        "upload_renamed",
+    }
     for path in layout.values():
         assert path.is_dir()
         assert path.is_relative_to(workspace)
@@ -233,3 +244,73 @@ def test_compare_document_versions_diffs_strengths_weaknesses_claims_and_referen
     assert comparison["unsupported_claims"] == {"added": [], "removed": ["Claim one is unsupported."]}
     assert comparison["weakly_supported_claims"] == {"added": ["Claim two is weak."], "removed": []}
     assert comparison["references"] == {"added": ["Doe (2023)."], "removed": []}
+
+
+def test_intake_uploaded_artefact_copies_without_modifying_the_upload(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "incoming" / "Draft Chapter.docx"
+    upload_source.parent.mkdir(parents=True, exist_ok=True)
+    original_bytes = b"fake docx bytes"
+    upload_source.write_bytes(original_bytes)
+
+    record = intake_uploaded_artefact(
+        workspace, upload_source, title="Draft Chapter One", author="Smith, A.", year="2024"
+    )
+
+    assert record["upload_id"] == "upload-001"
+    assert record["original_file_modified"] is False
+    assert upload_source.read_bytes() == original_bytes  # upload itself untouched
+
+    renamed_path = Path(record["vault_renamed_path"])
+    assert renamed_path.is_file()
+    assert renamed_path.read_bytes() == original_bytes
+    assert renamed_path.name.startswith("smith_2024_draft-chapter-one_upload-001")
+
+    original_copy_path = Path(record["vault_original_copy_path"])
+    assert original_copy_path.is_file()
+    assert original_copy_path.name == "Draft Chapter.docx"
+    assert original_copy_path.read_bytes() == original_bytes
+
+    assert list_uploaded_artefacts(workspace) == [record]
+
+
+def test_intake_uploaded_artefact_handles_original_filename_collisions(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    first_source = tmp_path / "batch1" / "draft.pdf"
+    second_source = tmp_path / "batch2" / "draft.pdf"
+    first_source.parent.mkdir(parents=True, exist_ok=True)
+    second_source.parent.mkdir(parents=True, exist_ok=True)
+    first_source.write_bytes(b"first upload")
+    second_source.write_bytes(b"second upload")
+
+    first_record = intake_uploaded_artefact(workspace, first_source)
+    second_record = intake_uploaded_artefact(workspace, second_source)
+
+    first_copy = Path(first_record["vault_original_copy_path"])
+    second_copy = Path(second_record["vault_original_copy_path"])
+    assert first_copy != second_copy
+    assert first_copy.read_bytes() == b"first upload"
+    assert second_copy.read_bytes() == b"second upload"
+    # renamed copies never collide either, since the upload ID is embedded in the name
+    assert first_record["vault_renamed_path"] != second_record["vault_renamed_path"]
+    assert first_record["renamed_file_name"] != second_record["renamed_file_name"]
+
+
+def test_intake_uploaded_artefact_uses_filename_stem_when_no_title_given(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "methodology-notes.md"
+    upload_source.write_text("# Notes", encoding="utf-8")
+
+    record = intake_uploaded_artefact(workspace, upload_source)
+
+    assert record["title"] == "methodology-notes"
+    assert record["author_token"] == "unknown-author"
+    assert record["year"] == "nd"
+    assert "methodology-notes" in record["renamed_file_name"]
+
+
+def test_intake_uploaded_artefact_rejects_missing_source(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+
+    with pytest.raises(ValueError):
+        intake_uploaded_artefact(workspace, tmp_path / "does-not-exist.pdf")

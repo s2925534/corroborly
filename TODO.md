@@ -228,8 +228,8 @@
 - [x] **Done** - **Deterministic** - version-conscious citation application so each citation insertion creates a new document version linked to the evidence sources, confidence report, and references generated for that run.
 - [x] **Done** - **Deterministic** - version comparison reports that show how document strengths, weaknesses, unsupported claims, and references changed between two versions.
 - [x] **Done** - **Deterministic** - document vault versions, manifests, and SQLite metadata into local backups without copying Zotero-owned originals into the workspace unless explicitly requested.
-- [ ] **Deterministic** - an uploaded-artefact intake path in the document vault for externally created artefacts, storing the original uploaded file, a sanitized renamed vault copy, and the mapping between them without modifying the uploaded file in place.
-- [ ] **Deterministic** - deterministic renamed-copy generation for uploaded artefacts reusing the existing title/author/year/source-id filename-suggestion pattern, with collision-safe suffixes when two uploads would otherwise produce the same name.
+- [x] **Done** - **Deterministic** - an uploaded-artefact intake path in the document vault for externally created artefacts, storing the original uploaded file, a sanitized renamed vault copy, and the mapping between them without modifying the uploaded file in place (`researchboss doc upload/uploads`, `vault.intake_uploaded_artefact`).
+- [x] **Done** - **Deterministic** - deterministic renamed-copy generation for uploaded artefacts reusing the existing title/author/year/source-id filename-suggestion pattern (moved into shared `researchboss.engine.filenames`), with collision-safe suffixes for the original-copy directory and an embedded upload ID guaranteeing uniqueness for the renamed copy.
 
 ## Phase 9: FastAPI Local Backend
 

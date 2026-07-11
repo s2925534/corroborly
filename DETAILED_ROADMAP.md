@@ -344,12 +344,13 @@ Status: deterministic MVP paths complete.
 
 Done:
 
-- Local document vault layout (`document_vault/originals`, `versions`, `derived_text`, `diffs`, `manifests`, `ai_edit_sessions`) created at workspace init.
+- Local document vault layout (`document_vault/originals`, `versions`, `derived_text`, `diffs`, `manifests`, `ai_edit_sessions`, `uploads/originals`, `uploads/renamed`) created at workspace init.
 - Document version records (version ID, parent version ID, content hash, creation reason, source command, model metadata, guideline IDs, validation report ID, citation plan ID) through `researchboss doc version`/`doc versions`.
 - Text diff (`doc diff`) and validation-based version comparison (`doc compare`) reports.
 - Restore-as-copy behavior (`doc restore`) that never overwrites the current document or deletes newer versions.
 - Automatic pre/post-change snapshots wired into `cite apply`, the only current command that creates a modified document copy.
 - `document_versions` SQLite sync and document vault inclusion in local backups.
+- Uploaded-artefact intake (`doc upload`/`doc uploads`, `vault.intake_uploaded_artefact`): copies an externally created file into `uploads/originals` (collision-safe suffix) and a renamed `uploads/renamed` copy (author/year/title tokens plus an embedded upload ID for guaranteed uniqueness) without ever touching the uploaded file. The author/year/title tokenizing helpers moved out of `metadata_quality.py` into a shared `researchboss.engine.filenames` module so both source filename suggestions and upload renaming use the same logic.
 
 Next work:
 
@@ -382,7 +383,8 @@ Done:
 Next work:
 
 - Novelty assessment has no deterministic engine path (`ai_novelty_assessment` in `researchboss/engine/ai.py` is AI-only) — a route needs the same explicit AI opt-in, cost-awareness, and privacy-boundary rules as the Future AI Routes section, not just a contract addition.
-- Artefact upload, batch limits, and cross-reference routes (need new engine-level functions first — none of this exists in `researchboss.engine` yet).
+- Artefact upload route: `vault.intake_uploaded_artefact` now exists (Phase 8) and the CLI already exposes it via `doc upload`, but the API route is a different interaction pattern than every other route built so far — it needs real multipart file bytes over HTTP (`UploadFile`), not a local path reference — plus batch size/count limits and a per-batch accepted/renamed/duplicate/rejected/failed report. Deliberately deferred rather than rushed: real security surface (temp-file handling, upload size DoS, path-traversal in submitted filenames) that deserves its own focused pass.
+- Cross-reference routes still need new engine-level matching logic — nothing in `researchboss.engine` proposes artefact links yet.
 
 ### Phase 10: Cross-Platform UI Preparation
 

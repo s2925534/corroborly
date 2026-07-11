@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.8.2
+Current version: 0.8.3
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -439,7 +439,7 @@ researchboss cite apply <target> --workspace <workspace>
 
 ## Document Vault
 
-`document-vault.yaml` tracks version history for generated artefacts and user-selected target documents inside a local `document_vault/` folder (`originals/`, `versions/`, `diffs/`, `manifests/`). Original files are never modified in place; every command that creates a modified document copy — including `cite apply` — automatically snapshots the document before and after the change.
+`document-vault.yaml` tracks version history for generated artefacts and user-selected target documents inside a local `document_vault/` folder (`originals/`, `versions/`, `diffs/`, `manifests/`, `uploads/originals/`, `uploads/renamed/`). Original files are never modified in place; every command that creates a modified document copy — including `cite apply` — automatically snapshots the document before and after the change.
 
 ```bash
 researchboss doc version <target> --workspace <workspace>
@@ -447,9 +447,13 @@ researchboss doc versions <target> --workspace <workspace>
 researchboss doc diff <version-id-a> <version-id-b> --workspace <workspace>
 researchboss doc compare <version-id-a> <version-id-b> --workspace <workspace>
 researchboss doc restore <version-id> --workspace <workspace>
+researchboss doc upload <path> [--title <title>] [--author <author>] [--year <year>] --workspace <workspace>
+researchboss doc uploads --workspace <workspace>
 ```
 
 `doc version` snapshots a target (path, artefact ID/title, alias, or artefact type) into the vault, recording its content hash, parent version, creation reason, source command, and — when applicable — the linked validation report and citation plan IDs. `doc diff` shows a unified text diff between two versions (Markdown/TXT only; other formats report `diff_supported: false` rather than guessing). `doc compare` shows how a target's validation strengths, weaknesses, unsupported claims, and references changed between two versions, when both carry a linked validation report. `doc restore` always writes a new, separate copy rather than overwriting the current document or deleting newer versions.
+
+`doc upload` copies an externally created artefact into the vault: an untouched copy under its original filename (collision-safe suffixed if that name was already used) plus a renamed working copy following the same author/year/title filename-suggestion pattern as source filename suggestions, with the upload ID embedded to keep the renamed copy collision-free. The uploaded file itself is never modified or moved. `doc uploads` lists everything brought in this way.
 
 ## Local API
 
@@ -520,7 +524,7 @@ The detailed living roadmap is maintained in `DETAILED_ROADMAP.md`. Update that 
 5. Add optional OpenAI features with strict privacy boundaries.
 6. Add deterministic document validation, guideline handling, citation assistance, and later explicit AI opt-ins for whole-document workflows.
 7. Optional workspace SQLite memory, indexing, and sync complete for deterministic local MVP paths.
-8. Document vault, versioning, and restoration complete for deterministic local MVP paths (`researchboss doc version/versions/diff/restore/compare`); derived-text anchoring and AI edit sessions remain future work.
+8. Document vault, versioning, restoration, and uploaded-artefact intake complete for deterministic local MVP paths (`researchboss doc version/versions/diff/restore/compare/upload/uploads`); derived-text anchoring and AI edit sessions remain future work.
 9. Local FastAPI backend: every route in `docs/api/CONTRACT.md` implemented via `researchboss serve`, including single-user login protection, validation, citation plans, guidelines, and SQLite sync status, except the disabled Future AI Routes section. Novelty assessment stays out until it can be added under explicit AI opt-in and privacy-boundary rules.
 10. Prepare a cross-platform UI.
 11. Add packaging plans for desktop distribution.

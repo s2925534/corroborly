@@ -117,7 +117,9 @@ from researchboss.engine.vault import (
     compare_document_versions,
     create_document_version,
     diff_document_versions,
+    intake_uploaded_artefact,
     list_document_versions,
+    list_uploaded_artefacts,
     restore_document_version,
 )
 from researchboss.engine.sources import (
@@ -2678,6 +2680,69 @@ def doc_compare(
     for section in ("strengths", "weaknesses", "unsupported_claims", "weakly_supported_claims", "references"):
         change = report[section]
         console.print(f"[bold]{section}[/bold] added={len(change['added'])} removed={len(change['removed'])}")
+
+
+@doc_app.command("upload")
+def doc_upload(
+    source_path: Path = typer.Argument(..., help="Path to an externally created artefact file to bring into the vault."),
+    title: Optional[str] = typer.Option(None, "--title", help="Optional title used for the renamed vault copy."),
+    author: Optional[str] = typer.Option(None, "--author", help="Optional author used for the renamed vault copy."),
+    year: Optional[str] = typer.Option(None, "--year", help="Optional year used for the renamed vault copy."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Copy an externally created artefact into the document vault under a sanitized, renamed name."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["doc", "upload"], ws, log_level)
+    try:
+        record = intake_uploaded_artefact(ws, source_path, title=title, author=author, year=year)
+    except ValueError as e:
+        logger.error("Artefact upload failed", operation="doc_upload", source_path=str(source_path), error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        raise typer.Exit(code=2)
+
+    logger.info(
+        "Uploaded artefact into document vault",
+        operation="doc_upload",
+        upload_id=record["upload_id"],
+        renamed_path=record["vault_renamed_path"],
+    )
+    _finish(summary, summary_path, next_action="Review the renamed copy before registering it as an artefact.")
+    if not quiet:
+        console.print(f"[green]Uploaded:[/green] {record['upload_id']}")
+        console.print(f"Renamed copy: {record['vault_renamed_path']}")
+        console.print(f"Original copy: {record['vault_original_copy_path']}")
+
+
+@doc_app.command("uploads")
+def doc_uploads(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List artefacts uploaded into the document vault."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["doc", "uploads"], ws, log_level)
+    rows = list_uploaded_artefacts(ws)
+    logger.info("Listed uploaded artefacts", operation="doc_uploads", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Uploaded artefacts")
+    table.add_column("upload_id")
+    table.add_column("title")
+    table.add_column("original_file_name")
+    table.add_column("renamed_file_name")
+    for row in rows:
+        table.add_row(
+            str(row.get("upload_id")),
+            str(row.get("title")),
+            str(row.get("original_file_name")),
+            str(row.get("renamed_file_name")),
+        )
+    console.print(table)
 
 
 @rqs_app.command("list")

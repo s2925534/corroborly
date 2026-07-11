@@ -1798,3 +1798,33 @@ def test_cli_doc_compare_reports_not_comparable_without_validation_links(tmp_pat
 
     assert result.exit_code == 0, result.output
     assert "Not comparable" in result.output
+
+
+def test_cli_doc_upload_and_uploads(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    upload_source = tmp_path / "incoming" / "notes.md"
+    upload_source.parent.mkdir(parents=True, exist_ok=True)
+    upload_source.write_text("# Methodology notes", encoding="utf-8")
+
+    upload_result = runner.invoke(
+        app,
+        [
+            "doc",
+            "upload",
+            str(upload_source),
+            "--title",
+            "Methodology Notes",
+            "--workspace",
+            str(workspace),
+        ],
+    )
+    assert upload_result.exit_code == 0, upload_result.output
+    assert "upload-001" in upload_result.output
+    assert upload_source.read_text(encoding="utf-8") == "# Methodology notes"  # upload untouched
+
+    uploads_result = runner.invoke(app, ["doc", "uploads", "--workspace", str(workspace), "--quiet"])
+    assert uploads_result.exit_code == 0, uploads_result.output
+
+    ledger = read_yaml(workspace / "document-vault.yaml")
+    assert ledger["uploads"][0]["upload_id"] == "upload-001"

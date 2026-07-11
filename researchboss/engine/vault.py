@@ -9,6 +9,7 @@ from typing import Any, Optional
 from researchboss.core.constants import WORKSPACE_FILES
 from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.document_targets import resolve_document_target
+from researchboss.engine.filenames import author_token, safe_filename_token
 from researchboss.engine.sources import sha256_file
 
 
@@ -19,6 +20,8 @@ VAULT_DIRS = {
     "diffs": "document_vault/diffs",
     "manifests": "document_vault/manifests",
     "ai_edit_sessions": "document_vault/ai_edit_sessions",
+    "upload_originals": "document_vault/uploads/originals",
+    "upload_renamed": "document_vault/uploads/renamed",
 }
 
 TEXT_LIKE_EXTENSIONS = {".txt", ".md"}
@@ -264,6 +267,80 @@ def restore_document_version(
     return record
 
 
+def list_uploaded_artefacts(workspace: Path) -> list[dict[str, Any]]:
+    return _read_ledger(workspace).get("uploads", [])
+
+
+def intake_uploaded_artefact(
+    workspace: Path,
+    source_path: Path,
+    *,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    year: Optional[str] = None,
+) -> dict[str, Any]:
+    """Copy an externally created artefact into the document vault under a sanitized name.
+
+    `source_path` is only ever read and copied — never modified, moved, or
+    deleted. Both the original upload and a renamed working copy are kept, so
+    the mapping between the two is always recoverable. The renamed filename
+    embeds the upload ID, mirroring the source filename-suggestion pattern's
+    use of source_id, which avoids collisions by construction; the separate
+    original-copy directory (where filenames are not disambiguated by an ID)
+    still gets a numeric suffix if a same-named file was uploaded before.
+    """
+    if not source_path.is_file():
+        raise ValueError(f"Uploaded artefact does not exist: {source_path}")
+
+    layout = ensure_vault_dirs(workspace)
+    ledger = _read_ledger(workspace)
+    uploads = ledger.setdefault("uploads", [])
+
+    upload_id = f"upload-{len(uploads) + 1:03d}"
+    extension = source_path.suffix.lower().lstrip(".") or "bin"
+    title_value = (title or source_path.stem).strip() or "untitled"
+    year_value = str(year).strip() if year else "nd"
+    title_tok = safe_filename_token(title_value, fallback="untitled")
+    author_tok = safe_filename_token(author_token([author] if author else []), fallback="unknown-author")
+
+    renamed_name = f"{author_tok}_{year_value}_{title_tok}_{upload_id}.{extension}"[:200]
+    renamed_path = layout["upload_renamed"] / renamed_name
+    shutil.copy2(source_path, renamed_path)
+
+    original_copy_path = _collision_safe_path(layout["upload_originals"] / source_path.name)
+    shutil.copy2(source_path, original_copy_path)
+
+    record = {
+        "upload_id": upload_id,
+        "original_uploaded_path": str(source_path),
+        "original_file_name": source_path.name,
+        "vault_original_copy_path": str(original_copy_path),
+        "vault_renamed_path": str(renamed_path),
+        "renamed_file_name": renamed_name,
+        "title": title_value,
+        "author_token": author_tok,
+        "year": year_value,
+        "content_hash": sha256_file(source_path),
+        "created_at": _utc_now(),
+        "original_file_modified": False,
+    }
+    uploads.append(record)
+    ledger["uploads"] = uploads
+    _write_ledger(workspace, ledger)
+    return record
+
+
+def _collision_safe_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    counter = 2
+    while True:
+        candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
 def _get_version(workspace: Path, version_id: str) -> dict[str, Any]:
     for record in list_document_versions(workspace):
         if record.get("version_id") == version_id:
@@ -284,6 +361,7 @@ def _read_ledger(workspace: Path) -> dict[str, Any]:
     ledger = read_yaml(_ledger_path(workspace))
     ledger.setdefault("version", 1)
     ledger.setdefault("versions", [])
+    ledger.setdefault("uploads", [])
     return ledger
 
 

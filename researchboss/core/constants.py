@@ -76,6 +76,9 @@ WORKSPACE_DIRS: list[str] = [
     "document_vault/diffs",
     "document_vault/manifests",
     "document_vault/ai_edit_sessions",
+    "document_vault/uploads",
+    "document_vault/uploads/originals",
+    "document_vault/uploads/renamed",
 ]
 
 

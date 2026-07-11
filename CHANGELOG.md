@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Added uploaded-artefact intake to the document vault through `researchboss doc upload/uploads`: copies an externally created file into `document_vault/uploads/{originals,renamed}` without ever modifying the upload itself, using a shared `researchboss.engine.filenames` module (extracted from the existing source filename-suggestion logic) for the renamed copy's author/year/title tokens, plus an embedded upload ID that keeps renamed copies collision-free and a numeric-suffix fallback for same-named original copies.
+- Bumped project version to 0.8.3.
 - Added `POST /api/v1/validation/run`, `POST /api/v1/citations/plan|apply`, `GET/POST /api/v1/guidelines/*`, and `GET/POST /api/v1/db/*` routes to the local FastAPI backend — every route in `docs/api/CONTRACT.md` is now implemented except the disabled Future AI Routes section and novelty assessment (which has no deterministic engine path and needs explicit AI opt-in rules, not just a contract addition).
 - Bumped project version to 0.8.2.
 - Added single-user login protection to the local FastAPI backend: `POST /api/v1/auth/login`/`logout`, an in-memory expiring session store, and a `require_session` dependency guarding every `/api/v1` route except login itself. Fails closed (`503 auth_not_configured`) rather than allowing unauthenticated access when `RESEARCHBOSS_API_PASSWORD` is unset. Sessions support both cookie and `Authorization: Bearer` token auth and are never persisted to YAML, SQLite, or git.

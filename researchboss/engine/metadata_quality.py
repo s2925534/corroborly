@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from researchboss.core.yamlio import read_yaml, write_yaml
+from researchboss.engine.filenames import author_token as _author_token
+from researchboss.engine.filenames import safe_filename_token as _safe_filename_token
 
 
 DOI_VALUE_RE = re.compile(r"^10\.\d{4,9}/[-._;()/:A-Z0-9]+$", re.IGNORECASE)
@@ -168,22 +170,6 @@ def _filename_suggestion(source: dict[str, Any]) -> dict[str, Any]:
         },
         "rename_performed": False,
     }
-
-
-def _author_token(authors: list[Any]) -> str:
-    if not authors:
-        return "unknown-author"
-    first = str(authors[0])
-    if "," in first:
-        return first.split(",", 1)[0].strip()
-    parts = first.split()
-    return parts[-1] if parts else "unknown-author"
-
-
-def _safe_filename_token(value: str, *, fallback: str) -> str:
-    text = re.sub(r"[^A-Za-z0-9]+", "-", value.lower()).strip("-")
-    text = re.sub(r"-{2,}", "-", text)
-    return (text or fallback)[:60]
 
 
 def _sources(workspace: Path) -> list[dict[str, Any]]:
