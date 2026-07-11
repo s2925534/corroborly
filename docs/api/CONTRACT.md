@@ -16,6 +16,26 @@ The API must be local-first, workspace-scoped, and a thin transport layer over `
 - AI routes are future/disabled until privacy-boundary tests exist.
 - API keys must not be returned, printed, or logged.
 - Whole PDFs, CSV files, SQLite databases, or original documents must not be sent to AI by default.
+- Every `/api/v1` route except `/api/v1/auth/login` must fail closed (`503 auth_not_configured`) when no login password is configured, rather than silently allowing unauthenticated access.
+- The login password must never be returned, printed, or logged, and session tokens are held in server memory only — never written to YAML, SQLite, or git.
+
+## Authentication
+
+`researchboss serve` is a single-user local tool, not a multi-tenant service. Set `RESEARCHBOSS_API_PASSWORD` (env var, or `.env` in the server's working directory) before starting the server; every `/api/v1` route except `/api/v1/auth/login` requires a valid session. `GET /health` never requires a session, so deploy/update health checks keep working regardless of login state.
+
+### `POST /api/v1/auth/login` (implemented)
+
+Accepts `{"password": "..."}`. Returns `503 auth_not_configured` if no password is set, `401 invalid_credentials` on a wrong password, or `200` with a session token (also set as an httponly `researchboss_session` cookie) on success. Sessions expire after `RESEARCHBOSS_API_SESSION_HOURS` hours (default 12) and live in server memory only, so a server restart invalidates all sessions.
+
+Engine source:
+
+- `researchboss.api.auth` (server-local, not a `researchboss.engine` module — there is no workspace-scoped concept of a login)
+
+### `POST /api/v1/auth/logout` (implemented)
+
+Invalidates the session named by the `Authorization: Bearer <token>` header or the `researchboss_session` cookie, and clears the cookie. No public self-registration route exists.
+
+Callers may authenticate with either the cookie set by `/login` or an `Authorization: Bearer <token>` header carrying the same token.
 
 ## Common Conventions
 

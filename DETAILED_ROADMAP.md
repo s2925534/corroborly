@@ -376,11 +376,11 @@ Done:
 - Reports (`workspace`, `timeline`), evidence export, backup (`create`, `inspect`), and project log (`decisions`, `terminology`, `feedback`, `context/changelog`).
 - `researchboss serve` to run the app with uvicorn; route tests via `fastapi.testclient.TestClient`, plus live-HTTP smoke tests during development.
 - Moved `resolve_zotero_paths`/`configured_source_root`/`configured_zotero`/`write_zotero_config` out of private `cli.py` helpers into `researchboss.engine.zotero` so the CLI and the API share one implementation instead of duplicating Zotero config resolution.
+- Single-user login protection: `RESEARCHBOSS_API_PASSWORD`-configured, `POST /api/v1/auth/login`/`logout`, an in-memory expiring session store (`researchboss/api/auth.py`), and a `require_session` dependency applied via `dependencies=[...]` on every protected router's `include_router()` call rather than touching each route handler. Fails closed with `503 auth_not_configured` when no password is set — never silently open. Accepts either the httponly session cookie or an `Authorization: Bearer` token. Password/tokens never logged or persisted to YAML/SQLite/git.
 
 Next work:
 
 - Routes for validation, citation plans, guidelines, SQLite sync status, and novelty are not yet in `docs/api/CONTRACT.md` — add the route shapes to the contract first, then implement.
-- Single-user login protection guarding `/api/v1` routes (needs a credential-storage design decision).
 - Artefact upload, batch limits, and cross-reference routes (need new engine-level functions first — none of this exists in `researchboss.engine` yet).
 
 ### Phase 10: Cross-Platform UI Preparation
@@ -706,7 +706,7 @@ Missing:
 
 ## 15. Immediate Next Steps
 
-Phase 1 through the currently implemented deterministic Phase 8 work is complete for the committed items. Every route currently documented in `docs/api/CONTRACT.md` is implemented (Phase 9), except the disabled Future AI Routes section. Remaining work includes derived-text anchoring and AI edit sessions in Phase 8, login protection and new (not-yet-contracted) route groups in Phase 9, AI privacy-boundary work, UI preparation, and packaging.
+Phase 1 through the currently implemented deterministic Phase 8 work is complete for the committed items. Every route currently documented in `docs/api/CONTRACT.md` is implemented (Phase 9), including single-user login protection, except the disabled Future AI Routes section. Remaining work includes derived-text anchoring and AI edit sessions in Phase 8, new (not-yet-contracted) route groups in Phase 9, AI privacy-boundary work, UI preparation, and packaging.
 
 1. Add derived text snapshots, section maps, paragraph IDs, claim IDs, reference IDs, and citation insertion anchors per document version.
    - Why: repeatable AI-assisted editing needs stable anchors into a document version rather than re-matching raw text each run.
@@ -715,14 +715,7 @@ Phase 1 through the currently implemented deterministic Phase 8 work is complete
    - Complexity: high — needs an explicit anchor-ID design decision before implementation.
    - Phase: 8 remainder.
 
-2. Add single-user login protection guarding `/api/v1` routes.
-   - Why: a deployed instance (Phase 12) holds one researcher's private workspace data; every route group should land behind auth before any public deployment.
-   - Likely files: new `researchboss/api/auth.py`, session/credential storage, `researchboss/api/app.py` middleware wiring, tests.
-   - Tests: unauthenticated requests rejected, session expiry, no secrets in logs/SQLite/git.
-   - Complexity: medium — needs a credential-storage design decision (e.g. env-var-configured password hash vs. a local credentials file).
-   - Phase: 9.
-
-3. Add validation, citation plan, guideline, SQLite sync status, and novelty route groups.
+2. Add validation, citation plan, guideline, SQLite sync status, and novelty route groups.
    - Why: these engine areas are tested but not yet in `docs/api/CONTRACT.md` — the contract needs the route shapes specified before route-wrapping is purely mechanical.
    - Likely files: `docs/api/CONTRACT.md` additions, new modules under `researchboss/api/routers/`, `researchboss/api/app.py` router registration, tests.
    - Tests: routes call shared engine functions only, workspace-scoped writes, no-Zotero-write boundary, per route group.
@@ -752,7 +745,7 @@ Not suitable for MVP right now:
 
 ## 16. Recommended Resume Point
 
-Deterministic Phase 8 document vault, versioning, and restoration is complete. Phase 9 FastAPI now implements every route in `docs/api/CONTRACT.md` except the disabled Future AI Routes section. Resume with the remaining Phase 8 derived-text/anchor work, Phase 9 login protection, or adding validation/citation-plan/guideline/SQLite-sync-status/novelty route shapes to the contract before implementing them. AI work remains intentionally separated behind explicit opt-in and privacy-boundary tests.
+Deterministic Phase 8 document vault, versioning, and restoration is complete. Phase 9 FastAPI now implements every route in `docs/api/CONTRACT.md`, including single-user login protection, except the disabled Future AI Routes section. Resume with the remaining Phase 8 derived-text/anchor work, or adding validation/citation-plan/guideline/SQLite-sync-status/novelty route shapes to the contract before implementing them. AI work remains intentionally separated behind explicit opt-in and privacy-boundary tests.
 
 ## 17. Maintenance Rule
 

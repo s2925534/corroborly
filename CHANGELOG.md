@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Added single-user login protection to the local FastAPI backend: `POST /api/v1/auth/login`/`logout`, an in-memory expiring session store, and a `require_session` dependency guarding every `/api/v1` route except login itself. Fails closed (`503 auth_not_configured`) rather than allowing unauthenticated access when `RESEARCHBOSS_API_PASSWORD` is unset. Sessions support both cookie and `Authorization: Bearer` token auth and are never persisted to YAML, SQLite, or git.
+- Bumped project version to 0.8.1.
 - Completed every route documented in `docs/api/CONTRACT.md` (except the disabled Future AI Routes section): conversion, metadata, data, claims, artefact creation, Zotero (read-only local and Web API, with collection selection written only to the workspace), reports, evidence export, backup, and project log routes.
 - Moved Zotero workspace-config resolution (`resolve_zotero_paths`, `configured_source_root`, `configured_zotero`, `write_zotero_config`) from private `cli.py` helpers into `researchboss.engine.zotero` so the CLI and the new Zotero API routes share the same logic instead of duplicating it.
 - Bumped project version to 0.8.0.
