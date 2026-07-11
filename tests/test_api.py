@@ -1082,3 +1082,65 @@ def test_artefacts_cross_reference_unknown_upload_id_returns_404(client: TestCli
 
     assert response.status_code == 404
     assert response.json()["errors"][0]["code"] == "unknown_upload_id"
+
+
+def test_artefacts_cross_reference_apply_writes_only_approved_candidates_via_api(
+    client: TestClient, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    upload_response = client.post(
+        "/api/v1/artefacts/upload",
+        params={"workspace": str(workspace)},
+        files=[("files", ("berth-planning-notes.md", b"notes", "text/markdown"))],
+    )
+    upload_id = upload_response.json()["data"]["rows"][0]["upload_id"]
+
+    artefact_path = workspace / "artefacts" / "reports" / "summary.md"
+    artefact_path.parent.mkdir(parents=True, exist_ok=True)
+    artefact_path.write_text("# Summary", encoding="utf-8")
+    client.post(
+        "/api/v1/artefacts",
+        params={"workspace": str(workspace)},
+        json={"title": "Berth Planning Summary", "artefact_type": "report", "path": str(artefact_path)},
+    )
+    client.get("/api/v1/artefacts/cross-reference", params={"workspace": str(workspace), "upload_id": upload_id})
+
+    report_path = workspace / "outputs" / "recommendations" / f"cross-reference-{upload_id}.yaml"
+    report_data = read_yaml(report_path)
+    for candidate in report_data["candidates"]:
+        candidate["review_status"] = "accepted"
+    write_yaml(report_path, report_data)
+
+    response = client.post(
+        "/api/v1/artefacts/cross-reference/apply", params={"workspace": str(workspace)}, json={"upload_id": upload_id}
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["applied_count"] == 1
+    assert body["cross_references"][0]["target_kind"] == "artefact"
+    # confirm the artefact record itself was never touched -- link lives only on the upload
+    artefact_list = client.get("/api/v1/artefacts", params={"workspace": str(workspace)}).json()["data"]
+    assert "cross_references" not in artefact_list[0]
+
+
+def test_artefacts_cross_reference_apply_requires_candidates_first_via_api(
+    client: TestClient, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    upload_response = client.post(
+        "/api/v1/artefacts/upload",
+        params={"workspace": str(workspace)},
+        files=[("files", ("notes.md", b"notes", "text/markdown"))],
+    )
+    upload_id = upload_response.json()["data"]["rows"][0]["upload_id"]
+
+    response = client.post(
+        "/api/v1/artefacts/cross-reference/apply", params={"workspace": str(workspace)}, json={"upload_id": upload_id}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "cross_reference_apply_failed"

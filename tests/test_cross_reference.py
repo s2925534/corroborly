@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from researchboss.core.yamlio import write_yaml
+from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.claims import add_claim
 from researchboss.engine.artefacts import register_artefact
-from researchboss.engine.cross_reference import cross_reference_candidates
-from researchboss.engine.vault import intake_uploaded_artefact
+from researchboss.engine.cross_reference import apply_cross_reference_links, cross_reference_candidates
+from researchboss.engine.vault import intake_uploaded_artefact, list_uploaded_artefacts
 from researchboss.engine.workspace import init_workspace
 
 
@@ -112,3 +112,68 @@ def test_cross_reference_candidates_rejects_unknown_upload_id(tmp_path: Path) ->
 
     with pytest.raises(ValueError, match="Unknown upload_id"):
         cross_reference_candidates(workspace, "upload-999")
+
+
+def test_apply_cross_reference_links_writes_only_approved_candidates(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "berth-planning-notes.md"
+    upload_source.write_text("notes", encoding="utf-8")
+    upload = intake_uploaded_artefact(workspace, upload_source, title="Berth Planning Notes")
+
+    artefact_path = workspace / "artefacts" / "reports" / "summary.md"
+    artefact_path.parent.mkdir(parents=True, exist_ok=True)
+    artefact_path.write_text("# Summary", encoding="utf-8")
+    register_artefact(workspace, title="Berth Planning Summary", artefact_type="report", path=artefact_path)
+    add_claim(workspace, text="Berth planning improves throughput.")  # weaker match, left unapproved
+
+    report = cross_reference_candidates(workspace, upload["upload_id"])
+    report_path = workspace / "outputs" / "recommendations" / f"cross-reference-{upload['upload_id']}.yaml"
+    report_data = read_yaml(report_path)
+    # approve only the artefact candidate; leave any claim candidate untouched
+    for candidate in report_data["candidates"]:
+        if candidate["target_kind"] == "artefact":
+            candidate["review_status"] = "accepted"
+    write_yaml(report_path, report_data)
+
+    result = apply_cross_reference_links(workspace, upload["upload_id"])
+
+    assert result["applied_count"] == 1
+    assert result["cross_references"][0]["target_kind"] == "artefact"
+    uploaded = next(u for u in list_uploaded_artefacts(workspace) if u["upload_id"] == upload["upload_id"])
+    assert uploaded["cross_references"] == result["cross_references"]
+    # artefact/source/claim records themselves are never touched -- links live only on the upload
+    updated_report = read_yaml(report_path)
+    assert updated_report["links_written"] is True
+
+
+def test_apply_cross_reference_links_does_not_duplicate_on_second_apply(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "berth-planning-notes.md"
+    upload_source.write_text("notes", encoding="utf-8")
+    upload = intake_uploaded_artefact(workspace, upload_source, title="Berth Planning Notes")
+    artefact_path = workspace / "artefacts" / "reports" / "summary.md"
+    artefact_path.parent.mkdir(parents=True, exist_ok=True)
+    artefact_path.write_text("# Summary", encoding="utf-8")
+    register_artefact(workspace, title="Berth Planning Summary", artefact_type="report", path=artefact_path)
+
+    cross_reference_candidates(workspace, upload["upload_id"])
+    report_path = workspace / "outputs" / "recommendations" / f"cross-reference-{upload['upload_id']}.yaml"
+    report_data = read_yaml(report_path)
+    for candidate in report_data["candidates"]:
+        candidate["review_status"] = "accepted"
+    write_yaml(report_path, report_data)
+
+    first = apply_cross_reference_links(workspace, upload["upload_id"])
+    second = apply_cross_reference_links(workspace, upload["upload_id"])
+
+    assert len(first["cross_references"]) == len(second["cross_references"]) == 1
+
+
+def test_apply_cross_reference_links_requires_candidates_report_first(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "notes.md"
+    upload_source.write_text("notes", encoding="utf-8")
+    upload = intake_uploaded_artefact(workspace, upload_source, title="Notes")
+
+    with pytest.raises(ValueError, match="Run cross_reference_candidates first"):
+        apply_cross_reference_links(workspace, upload["upload_id"])

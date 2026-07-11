@@ -386,9 +386,13 @@ Engine source:
 
 - `researchboss.engine.cross_reference.cross_reference_candidates`
 
-### `POST /api/v1/artefacts/cross-reference/apply` (not implemented)
+### `POST /api/v1/artefacts/cross-reference/apply` (implemented)
 
-Planned: write reviewed cross-reference links following the review-before-apply pattern used for citation plans. Not yet built because "write the link" is ambiguous in a way the citation-plan precedent doesn't resolve: it could mean adding metadata to the artefact registry (analogous to `linked_sources`) or literally inserting text into methodology/artefact document content (analogous to `cite apply`, which needs per-format `.md`/`.docx`/`.pdf` handling). That choice needs to be made deliberately, not inferred from the read-only candidates route.
+Writes reviewed cross-reference candidates as metadata on the *upload* record — a `cross_references` list, mirroring how artefact records already track `linked_sources`/`linked_research_questions` — following the same review-before-apply pattern citation plans use: only candidates whose `review_status` in the persisted candidates report has been hand-edited to `accepted`/`approved` are applied. Deliberately does not insert text into any artefact, source, or claim document's content (the other reading of "write the link" this contract previously left open): a keyword-overlap match is weaker evidence than a validated missing-citation match, so auto-inserting text on that basis would be a worse default than recording it as reviewable metadata. Content insertion analogous to `cite apply` (needing per-format `.md`/`.docx`/`.pdf` handling) was considered and deliberately not chosen. Idempotent — re-applying does not duplicate already-recorded links.
+
+Engine source:
+
+- `researchboss.engine.cross_reference.apply_cross_reference_links`
 
 ## Zotero Routes
 

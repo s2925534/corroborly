@@ -330,6 +330,36 @@ def intake_uploaded_artefact(
     return record
 
 
+def add_cross_references_to_upload(
+    workspace: Path, upload_id: str, links: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Record confirmed cross-reference links as metadata on an upload record.
+
+    Never edits any artefact, source, or claim document's content — this
+    only appends to the upload record's own `cross_references` list,
+    mirroring how artefact records already track `linked_sources` and
+    `linked_research_questions` as metadata rather than inline document
+    text. Deduplicates by (target_kind, target_id), so calling this twice
+    with an overlapping set of links does not create duplicate entries.
+    """
+    ledger = _read_ledger(workspace)
+    uploads = ledger.get("uploads", [])
+    for record in uploads:
+        if record.get("upload_id") != upload_id:
+            continue
+        existing = record.setdefault("cross_references", [])
+        existing_keys = {(item.get("target_kind"), item.get("target_id")) for item in existing}
+        for link in links:
+            key = (link.get("target_kind"), link.get("target_id"))
+            if key not in existing_keys:
+                existing.append(link)
+                existing_keys.add(key)
+        ledger["uploads"] = uploads
+        _write_ledger(workspace, ledger)
+        return record
+    raise ValueError(f"Unknown upload_id: {upload_id}")
+
+
 def intake_uploaded_artefact_batch(
     workspace: Path,
     source_paths: list[Path],

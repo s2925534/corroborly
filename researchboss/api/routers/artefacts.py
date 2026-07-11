@@ -18,7 +18,7 @@ from researchboss.engine.artefacts import (
     register_artefact,
     set_artefact_review_status,
 )
-from researchboss.engine.cross_reference import cross_reference_candidates
+from researchboss.engine.cross_reference import apply_cross_reference_links, cross_reference_candidates
 from researchboss.engine.sources import ALLOWED_EXTENSIONS
 from researchboss.engine.vault import intake_uploaded_artefact_batch
 
@@ -206,12 +206,35 @@ def artefacts_cross_reference(
     """Propose deterministic links between an uploaded artefact and existing workspace items.
 
     Read-only: writes a candidate report but never modifies any artefact,
-    source, or claim record. There is no corresponding apply route yet — see
-    docs/api/CONTRACT.md for why that write-back step needs a design
-    decision before it can be built.
+    source, or claim record.
     """
     try:
         report = cross_reference_candidates(workspace, upload_id)
     except ValueError as exc:
         raise ApiError("unknown_upload_id", str(exc), status_code=404) from exc
     return ok(report)
+
+
+class CrossReferenceApplyRequest(BaseModel):
+    upload_id: str
+
+
+@router.post("/cross-reference/apply")
+def artefacts_cross_reference_apply(
+    payload: CrossReferenceApplyRequest, workspace: Path = Depends(resolve_workspace)
+) -> dict[str, Any]:
+    """Write reviewed cross-reference candidates as metadata on the upload record.
+
+    Only applies candidates whose `review_status` in the persisted report
+    (`outputs/recommendations/cross-reference-<upload_id>.yaml`) has been
+    hand-edited to "accepted" or "approved" — the same review-before-apply
+    pattern citation plans use. Never modifies any artefact, source, or
+    claim document's content; see docs/api/CONTRACT.md for why registry
+    metadata was chosen over document-content insertion.
+    """
+    try:
+        result = apply_cross_reference_links(workspace, payload.upload_id)
+    except ValueError as exc:
+        status_code = 404 if "Unknown upload_id" in str(exc) else 400
+        raise ApiError("cross_reference_apply_failed", str(exc), status_code=status_code) from exc
+    return ok(result)
