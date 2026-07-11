@@ -4,6 +4,8 @@ All notable changes to ResearchBoss will be documented in this file.
 
 ## Unreleased
 
+- Added `POST /api/v1/validation/run`, `POST /api/v1/citations/plan|apply`, `GET/POST /api/v1/guidelines/*`, and `GET/POST /api/v1/db/*` routes to the local FastAPI backend — every route in `docs/api/CONTRACT.md` is now implemented except the disabled Future AI Routes section and novelty assessment (which has no deterministic engine path and needs explicit AI opt-in rules, not just a contract addition).
+- Bumped project version to 0.8.2.
 - Added single-user login protection to the local FastAPI backend: `POST /api/v1/auth/login`/`logout`, an in-memory expiring session store, and a `require_session` dependency guarding every `/api/v1` route except login itself. Fails closed (`503 auth_not_configured`) rather than allowing unauthenticated access when `RESEARCHBOSS_API_PASSWORD` is unset. Sessions support both cookie and `Authorization: Bearer` token auth and are never persisted to YAML, SQLite, or git.
 - Bumped project version to 0.8.1.
 - Completed every route documented in `docs/api/CONTRACT.md` (except the disabled Future AI Routes section): conversion, metadata, data, claims, artefact creation, Zotero (read-only local and Web API, with collection selection written only to the workspace), reports, evidence export, backup, and project log routes.

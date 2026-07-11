@@ -10,11 +10,14 @@ from researchboss.api.routers import (
     artefacts,
     auth,
     backup,
+    citations,
     claims,
     conversion,
     data,
+    db,
     doc,
     export,
+    guidelines,
     health,
     metadata,
     project_log,
@@ -22,6 +25,7 @@ from researchboss.api.routers import (
     reports,
     rqs,
     sources,
+    validation,
     zotero,
 )
 
@@ -72,6 +76,10 @@ def create_app() -> FastAPI:
     app.include_router(export.router, prefix="/api/v1/export", tags=["export"], dependencies=protected)
     app.include_router(backup.router, prefix="/api/v1/backup", tags=["backup"], dependencies=protected)
     app.include_router(project_log.router, prefix="/api/v1", tags=["project-log"], dependencies=protected)
+    app.include_router(validation.router, prefix="/api/v1/validation", tags=["validation"], dependencies=protected)
+    app.include_router(citations.router, prefix="/api/v1/citations", tags=["citations"], dependencies=protected)
+    app.include_router(guidelines.router, prefix="/api/v1/guidelines", tags=["guidelines"], dependencies=protected)
+    app.include_router(db.router, prefix="/api/v1/db", tags=["db"], dependencies=protected)
     return app
 
 

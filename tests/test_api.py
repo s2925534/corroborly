@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from researchboss.api.app import create_app
 from researchboss.api.auth import clear_all_sessions
-from researchboss.core.yamlio import read_yaml
+from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.sources import scan_sources
 from researchboss.engine.workspace import init_workspace
 
@@ -700,3 +700,179 @@ def test_password_is_never_echoed_back_in_login_response(unauthenticated_client:
     response = unauthenticated_client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
 
     assert TEST_PASSWORD not in response.text
+
+
+def test_validation_run_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("Container terminal automation uses berth planning evidence.", encoding="utf-8")
+    source_text = workspace / "sources_text" / "source-001.txt"
+    source_text.write_text("Berth planning evidence supports container terminal automation.", encoding="utf-8")
+    write_yaml(
+        workspace / "source-register.yaml",
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "provider": "local_folder",
+                    "file_name": "paper.pdf",
+                    "conversion": {"status": "converted", "output_path": str(source_text)},
+                    "citation_metadata": {"title": "Accepted Source", "authors": ["Smith, A."], "year": 2024},
+                }
+            ],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/validation/run", params={"workspace": str(workspace)}, json={"target": str(target)}
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert Path(body["yaml_path"]).is_file()
+    assert body["report"]["target"]["path"] == str(target)
+    assert target.read_text(encoding="utf-8") == "Container terminal automation uses berth planning evidence."
+
+
+def test_validation_run_unknown_target_returns_400(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/validation/run",
+        params={"workspace": str(workspace)},
+        json={"target": "does-not-exist.md"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "invalid_validation_target"
+
+
+def test_citations_plan_and_apply_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    original_text = "Container terminal automation uses berth planning evidence."
+    target.write_text(original_text, encoding="utf-8")
+    source_text = workspace / "sources_text" / "source-001.txt"
+    source_text.write_text("Berth planning evidence supports container terminal automation.", encoding="utf-8")
+    write_yaml(
+        workspace / "source-register.yaml",
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "provider": "local_folder",
+                    "file_name": "paper.pdf",
+                    "conversion": {"status": "converted", "output_path": str(source_text)},
+                    "citation_metadata": {"title": "Accepted Source", "authors": ["Smith, A."], "year": 2024},
+                }
+            ],
+        },
+    )
+
+    plan_response = client.post(
+        "/api/v1/citations/plan", params={"workspace": str(workspace)}, json={"target": str(target)}
+    )
+    assert plan_response.status_code == 200
+    plan_body = plan_response.json()["data"]
+    assert target.read_text(encoding="utf-8") == original_text  # plan never edits the original
+
+    plan_path = Path(plan_body["yaml_path"])
+    plan_data = read_yaml(plan_path)
+    plan_data["insertions"][0]["review_status"] = "accepted"
+    write_yaml(plan_path, plan_data)
+
+    apply_response = client.post(
+        "/api/v1/citations/apply", params={"workspace": str(workspace)}, json={"target": str(target)}
+    )
+    assert apply_response.status_code == 200
+    apply_body = apply_response.json()["data"]
+    assert apply_body["applied"] == 1
+    assert "version_id" in apply_body
+    assert target.read_text(encoding="utf-8") == original_text  # original still untouched after apply
+
+
+def test_guidelines_register_list_defaults_and_conflicts_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    guideline_file = tmp_path / "style-guide.txt"
+    guideline_file.write_text("Use APA 7 citation style throughout.", encoding="utf-8")
+
+    register_response = client.post(
+        "/api/v1/guidelines",
+        params={"workspace": str(workspace)},
+        json={"source": str(guideline_file), "title": "Faculty Style Guide", "scopes": ["citation"]},
+    )
+    assert register_response.status_code == 200
+    guideline_id = register_response.json()["data"]["record"]["id"]
+
+    list_response = client.get("/api/v1/guidelines", params={"workspace": str(workspace)})
+    assert list_response.status_code == 200
+    assert len(list_response.json()["data"]) == 1
+
+    defaults_response = client.post(
+        "/api/v1/guidelines/defaults",
+        params={"workspace": str(workspace)},
+        json={"guideline_ids": [guideline_id]},
+    )
+    assert defaults_response.status_code == 200
+    assert defaults_response.json()["data"]["default_guideline_ids"] == [guideline_id]
+
+    conflicts_response = client.get("/api/v1/guidelines/conflicts", params={"workspace": str(workspace)})
+    assert conflicts_response.status_code == 200
+    assert conflicts_response.json()["ok"] is True
+
+
+def test_guidelines_defaults_rejects_unknown_id(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/guidelines/defaults",
+        params={"workspace": str(workspace)},
+        json={"guideline_ids": ["guideline-999"]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "invalid_guideline_ids"
+
+
+def test_db_full_lifecycle_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    init_response = client.post("/api/v1/db/init", params={"workspace": str(workspace)})
+    assert init_response.status_code == 200
+    assert Path(init_response.json()["data"]["database_path"]).is_file()
+
+    sync_response = client.post("/api/v1/db/sync", params={"workspace": str(workspace)})
+    assert sync_response.status_code == 200
+    assert sync_response.json()["data"]["report"]["files_synced"] >= 1
+
+    status_response = client.get("/api/v1/db/status", params={"workspace": str(workspace)})
+    assert status_response.status_code == 200
+    assert status_response.json()["data"]["report"]["status"] == "ok"
+
+    pending_response = client.get("/api/v1/db/pending", params={"workspace": str(workspace)})
+    assert pending_response.status_code == 200
+
+    apply_pending_response = client.post(
+        "/api/v1/db/apply-pending", params={"workspace": str(workspace)}, json={"apply": False}
+    )
+    assert apply_pending_response.status_code == 200
+
+    privacy_response = client.get("/api/v1/db/privacy", params={"workspace": str(workspace)})
+    assert privacy_response.status_code == 200
+    assert privacy_response.json()["data"]["report"]["status"] == "ok"
+
+    rebuild_response = client.post("/api/v1/db/rebuild", params={"workspace": str(workspace)})
+    assert rebuild_response.status_code == 200
+    assert rebuild_response.json()["data"]["report"]["status"] == "rebuilt"

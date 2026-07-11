@@ -2,7 +2,7 @@
 
 This document defines the FastAPI boundary for ResearchBoss.
 
-Contract status: implementation started in project version `0.7.0`; every route documented below is now implemented in `researchboss.api` (run with `researchboss serve`) except the disabled Future AI Routes section. New route groups (validation, citation plans, guidelines, SQLite sync status, novelty, AI) need to be added to this contract before they can be implemented, consistent with the reuse-not-duplicate rule below.
+Contract status: implementation started in project version `0.7.0`; every route documented below is now implemented in `researchboss.api` (run with `researchboss serve`) except the disabled Future AI Routes section. Novelty assessment has no deterministic engine path (`researchboss.engine.ai.ai_novelty_assessment` is AI-only) and stays out of this contract until it can be added under the same AI opt-in and privacy-boundary rules as the Future AI Routes section — it is not simply a missing route shape.
 
 The API must be local-first, workspace-scoped, and a thin transport layer over `researchboss.engine` functions. It must not duplicate business logic already implemented in the engine.
 
@@ -452,6 +452,126 @@ Compares how document strengths, weaknesses, unsupported claims, and references 
 Engine source:
 
 - `researchboss.engine.vault.compare_document_versions`
+
+## Validation Routes
+
+### `POST /api/v1/validation/run` (implemented)
+
+Deterministically validates a document target against accepted sources, Zotero-derived sources, and explicitly supplied source paths. Never sends anything to AI and never modifies the target document.
+
+Engine source:
+
+- `researchboss.engine.doc_validation.validate_document`
+
+## Citation Plan Routes
+
+### `POST /api/v1/citations/plan` (implemented)
+
+Creates a reviewable, non-destructive citation insertion plan from a validation run's missing-citation findings. Only suggests citations from `accepted` sources unless `allow_candidate_citations` is set.
+
+Engine source:
+
+- `researchboss.engine.citations.create_citation_plan`
+
+### `POST /api/v1/citations/apply` (implemented)
+
+Applies a reviewed citation plan's accepted insertions to a revised output copy — never edits the original document in place. Automatically snapshots the pre-apply document and the applied copy into the document vault (see Document Vault Routes), linking the applied version to its validation report and citation plan IDs.
+
+Engine source:
+
+- `researchboss.engine.citations.apply_citation_plan`
+
+## Guideline Routes
+
+### `GET /api/v1/guidelines` (implemented)
+
+Lists registered guidelines.
+
+Engine source:
+
+- `researchboss.engine.guidelines.list_guidelines`
+
+### `POST /api/v1/guidelines` (implemented)
+
+Registers a local file or remote URL guideline, snapshotting it and extracting text inside the workspace only.
+
+Engine source:
+
+- `researchboss.engine.guidelines.register_guideline`
+
+### `POST /api/v1/guidelines/defaults` (implemented)
+
+Sets the workspace's default guideline IDs and their precedence order, applied automatically by validation and citation planning unless overridden.
+
+Engine source:
+
+- `researchboss.engine.guidelines.set_default_guidelines`
+
+### `GET /api/v1/guidelines/conflicts` (implemented)
+
+Returns a deterministic report of contradictory guideline requirements for human review.
+
+Engine source:
+
+- `researchboss.engine.guidelines.guideline_conflict_report`
+
+## SQLite Sync Status Routes
+
+### `POST /api/v1/db/init` (implemented)
+
+Initializes the optional workspace SQLite index database.
+
+Engine source:
+
+- `researchboss.engine.database.init_database`
+
+### `POST /api/v1/db/sync` (implemented)
+
+Syncs workspace YAML/Markdown metadata into the local SQLite index. YAML and Markdown remain the source of truth.
+
+Engine source:
+
+- `researchboss.engine.database.sync_database`
+
+### `GET /api/v1/db/status` (implemented)
+
+Returns SQLite index health, sync counts, and repair guidance.
+
+Engine source:
+
+- `researchboss.engine.database.database_status`
+
+### `POST /api/v1/db/rebuild` (implemented)
+
+Rebuilds the SQLite index from workspace YAML/Markdown source-of-truth files.
+
+Engine source:
+
+- `researchboss.engine.database.rebuild_database`
+
+### `GET /api/v1/db/pending` (implemented)
+
+Returns SQLite-to-file pending changes for review, without applying them.
+
+Engine source:
+
+- `researchboss.engine.database.pending_changes_report`
+
+### `POST /api/v1/db/apply-pending` (implemented)
+
+Reviews (`apply: false`) or applies (`apply: true`) reviewed SQLite-to-YAML/Markdown pending changes. SQLite-to-file write-back is never silent.
+
+Engine source:
+
+- `researchboss.engine.database.apply_pending_changes`
+
+### `GET /api/v1/db/privacy` (implemented)
+
+Checks that the SQLite database does not intentionally store secrets or original documents.
+
+Engine source:
+
+- `researchboss.engine.database.database_privacy_report`
 
 ## Report And Export Routes
 
