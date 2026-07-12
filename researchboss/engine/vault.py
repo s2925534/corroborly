@@ -271,6 +271,32 @@ def list_uploaded_artefacts(workspace: Path) -> list[dict[str, Any]]:
     return _read_ledger(workspace).get("uploads", [])
 
 
+def resolve_uploaded_artefact_file(workspace: Path, upload_id: str) -> Path:
+    """Resolve an uploaded artefact's renamed vault copy to a real, in-vault file path.
+
+    Serves the renamed copy (not the original upload) since that is the
+    vault-managed file the ledger record and cross-reference candidates are
+    keyed against. Re-validates that the resolved path is still inside this
+    workspace's document vault after resolving symlinks, so a hand-edited
+    ledger record can never be used to read an arbitrary file off disk —
+    the same containment discipline `api.deps.resolve_workspace` applies to
+    the `workspace` argument itself.
+    """
+    for record in list_uploaded_artefacts(workspace):
+        if record.get("upload_id") != upload_id:
+            continue
+        file_path = Path(str(record.get("vault_renamed_path") or ""))
+        vault_root = (workspace / "document_vault").resolve()
+        try:
+            resolved = file_path.resolve()
+        except OSError as exc:
+            raise ValueError(f"Uploaded artefact file is unreadable for {upload_id}: {file_path}") from exc
+        if not resolved.is_relative_to(vault_root) or not resolved.is_file():
+            raise ValueError(f"Uploaded artefact file missing or outside the vault for {upload_id}: {file_path}")
+        return resolved
+    raise ValueError(f"Unknown upload_id: {upload_id}")
+
+
 def intake_uploaded_artefact(
     workspace: Path,
     source_path: Path,

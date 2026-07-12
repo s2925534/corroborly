@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from researchboss.api.deps import resolve_workspace
@@ -20,13 +21,28 @@ from researchboss.engine.artefacts import (
 )
 from researchboss.engine.cross_reference import apply_cross_reference_links, cross_reference_candidates
 from researchboss.engine.sources import ALLOWED_EXTENSIONS
-from researchboss.engine.vault import intake_uploaded_artefact_batch
+from researchboss.engine.vault import intake_uploaded_artefact_batch, list_uploaded_artefacts, resolve_uploaded_artefact_file
 
 
 router = APIRouter()
 
 DEFAULT_UPLOAD_MAX_FILES = 25
 DEFAULT_UPLOAD_MAX_FILE_SIZE_MB = 50.0
+
+# Preview-relevant subset of researchboss.engine.sources.ALLOWED_EXTENSIONS.
+# mimetypes.guess_type is not used here because its output is platform-dependent
+# (notably for .md, which many systems have no registered type for at all) and this
+# route only ever needs to serve the fixed set of extensions uploads already accept.
+UPLOAD_FILE_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".sqlite": "application/octet-stream",
+    ".db": "application/octet-stream",
+}
 
 
 @router.get("")
@@ -238,3 +254,31 @@ def artefacts_cross_reference_apply(
         status_code = 404 if "Unknown upload_id" in str(exc) else 400
         raise ApiError("cross_reference_apply_failed", str(exc), status_code=status_code) from exc
     return ok(result)
+
+
+@router.get("/uploads")
+def artefacts_uploads(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    """List artefacts previously uploaded into the document vault."""
+    return ok(list_uploaded_artefacts(workspace))
+
+
+@router.get("/uploads/{upload_id}/file")
+def artefacts_upload_file(upload_id: str, workspace: Path = Depends(resolve_workspace)) -> FileResponse:
+    """Serve an uploaded artefact's renamed vault copy for preview (e.g. a browser modal).
+
+    Serves the vault-managed renamed copy, never the original upload path
+    (which may sit outside the workspace entirely). Read-only: never
+    modifies the file, and rejects any resolved path that has drifted
+    outside the workspace's document vault. Explicitly requests
+    `Content-Disposition: inline` — Starlette's `FileResponse` defaults to
+    `attachment` (forces a download) whenever a `filename` is set, which
+    would fight a preview modal that wants the browser to render the file
+    in place rather than save it.
+    """
+    try:
+        file_path = resolve_uploaded_artefact_file(workspace, upload_id)
+    except ValueError as exc:
+        status_code = 404 if "Unknown upload_id" in str(exc) else 400
+        raise ApiError("upload_file_unavailable", str(exc), status_code=status_code) from exc
+    media_type = UPLOAD_FILE_MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(file_path, media_type=media_type, filename=file_path.name, content_disposition_type="inline")

@@ -1146,6 +1146,54 @@ def test_artefacts_cross_reference_apply_requires_candidates_first_via_api(
     assert response.json()["errors"][0]["code"] == "cross_reference_apply_failed"
 
 
+def test_artefacts_uploads_lists_previously_uploaded_artefacts_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    client.post(
+        "/api/v1/artefacts/upload",
+        params={"workspace": str(workspace)},
+        files=[("files", ("notes.md", b"# Notes", "text/markdown"))],
+    )
+
+    response = client.get("/api/v1/artefacts/uploads", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert len(body) == 1
+    assert body[0]["upload_id"] == "upload-001"
+    assert body[0]["original_file_name"] == "notes.md"
+
+
+def test_artefacts_upload_file_serves_renamed_vault_copy_inline_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    upload_response = client.post(
+        "/api/v1/artefacts/upload",
+        params={"workspace": str(workspace)},
+        files=[("files", ("notes.md", b"# Preview Me", "text/markdown"))],
+    )
+    upload_id = upload_response.json()["data"]["rows"][0]["upload_id"]
+
+    response = client.get(f"/api/v1/artefacts/uploads/{upload_id}/file", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert response.content == b"# Preview Me"
+    assert response.headers["content-type"] == "text/markdown; charset=utf-8"
+    assert response.headers["content-disposition"].startswith("inline")
+
+
+def test_artefacts_upload_file_unknown_upload_id_returns_404_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get("/api/v1/artefacts/uploads/bogus-id/file", params={"workspace": str(workspace)})
+
+    assert response.status_code == 404
+    assert response.json()["errors"][0]["code"] == "upload_file_unavailable"
+
+
 def test_derived_text_build_via_api(client: TestClient, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

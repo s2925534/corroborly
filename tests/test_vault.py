@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from researchboss.core.constants import WORKSPACE_DIRS
-from researchboss.core.yamlio import write_yaml
+from researchboss.core.yamlio import read_yaml, write_yaml
 from researchboss.engine.backup import create_workspace_backup, inspect_backup
 from researchboss.engine.vault import (
     compare_document_versions,
@@ -14,6 +14,7 @@ from researchboss.engine.vault import (
     intake_uploaded_artefact_batch,
     list_document_versions,
     list_uploaded_artefacts,
+    resolve_uploaded_artefact_file,
     restore_document_version,
     vault_layout,
 )
@@ -315,6 +316,42 @@ def test_intake_uploaded_artefact_rejects_missing_source(tmp_path: Path) -> None
 
     with pytest.raises(ValueError):
         intake_uploaded_artefact(workspace, tmp_path / "does-not-exist.pdf")
+
+
+def test_resolve_uploaded_artefact_file_returns_renamed_vault_copy(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "notes.md"
+    upload_source.write_text("# Preview Me", encoding="utf-8")
+    record = intake_uploaded_artefact(workspace, upload_source)
+
+    resolved = resolve_uploaded_artefact_file(workspace, record["upload_id"])
+
+    assert resolved == Path(record["vault_renamed_path"]).resolve()
+    assert resolved.read_text(encoding="utf-8") == "# Preview Me"
+
+
+def test_resolve_uploaded_artefact_file_rejects_unknown_upload_id(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+
+    with pytest.raises(ValueError, match="Unknown upload_id"):
+        resolve_uploaded_artefact_file(workspace, "bogus-id")
+
+
+def test_resolve_uploaded_artefact_file_rejects_path_outside_vault(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "notes.md"
+    upload_source.write_text("# Notes", encoding="utf-8")
+    record = intake_uploaded_artefact(workspace, upload_source)
+
+    ledger_path = workspace / "document-vault.yaml"
+    ledger = read_yaml(ledger_path)
+    outside_path = tmp_path / "escaped.md"
+    outside_path.write_text("# Escaped", encoding="utf-8")
+    ledger["uploads"][0]["vault_renamed_path"] = str(outside_path)
+    write_yaml(ledger_path, ledger)
+
+    with pytest.raises(ValueError, match="outside the vault"):
+        resolve_uploaded_artefact_file(workspace, record["upload_id"])
 
 
 def test_intake_batch_rejects_whole_batch_when_over_max_files(tmp_path: Path) -> None:

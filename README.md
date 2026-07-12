@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.9.7
+Current version: 0.9.8
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -471,6 +471,8 @@ Every route documented in `docs/api/CONTRACT.md` is implemented except the disab
 `POST /api/v1/artefacts/upload` accepts multipart form data (field name `files`) for batch artefact uploads. It rejects the whole batch with `400 upload_batch_too_large` if it exceeds `RESEARCHBOSS_UPLOAD_MAX_FILES` (default 25) before writing anything, caps each file at `RESEARCHBOSS_UPLOAD_MAX_FILE_SIZE_MB` (default 50), and only accepts extensions from the same allow-list source scanning uses. Uploaded bytes are streamed to a bounded-size temporary file rather than buffered in memory, and the temp directory is always cleaned up. The response is a per-batch report (accepted/duplicate/rejected/failed counts and per-file rows, duplicates detected by content hash), also persisted to `outputs/validation/upload-batch-report.yaml`.
 
 `GET /api/v1/artefacts/cross-reference?upload_id=<id>` proposes deterministic links between an uploaded artefact and existing artefacts, sources, and claims, based on shared keyword tokens in titles and filenames. It only ever writes a candidate report (`outputs/recommendations/cross-reference-<upload_id>.yaml`) — never an artefact, source, or claim record. `POST /api/v1/artefacts/cross-reference/apply` then writes reviewed candidates (hand-edited to `review_status: accepted` in that report) as metadata on the *upload* record — a `cross_references` list, not text inserted into any document — following the same review-before-apply pattern as citation plans.
+
+`GET /api/v1/artefacts/uploads` lists previously uploaded artefacts, and `GET /api/v1/artefacts/uploads/{upload_id}/file` serves an uploaded artefact's renamed vault copy as raw bytes with `Content-Disposition: inline`, for a future web UI preview modal to render directly rather than force a download. Both are read-only.
 
 Set `RESEARCHBOSS_API_PASSWORD` (env var or `.env` in the server's working directory) before starting the server. Every `/api/v1` route except `/api/v1/auth/login` requires a valid session and fails closed with `503 auth_not_configured` if no password is set — it never falls back to open access. Log in with `POST /api/v1/auth/login {"password": "..."}` to receive a session (an httponly cookie, and the same token usable as `Authorization: Bearer <token>`); sessions live in server memory only (default 12-hour expiry, `RESEARCHBOSS_API_SESSION_HOURS` to override) and are cleared on server restart. `POST /api/v1/auth/logout` invalidates the current session. There is no public self-registration route.
 

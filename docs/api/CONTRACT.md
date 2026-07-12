@@ -398,6 +398,26 @@ Engine source:
 
 - `researchboss.engine.cross_reference.apply_cross_reference_links`
 
+### `GET /api/v1/artefacts/uploads` (implemented)
+
+Lists artefacts previously uploaded into the document vault. Found missing during Phase 10 UI planning: `POST /api/v1/artefacts/upload` returns a batch report at upload time, but nothing let a web client re-list uploads after that (e.g. on a page reload) — the CLI already had this via `researchboss doc uploads`.
+
+Engine source:
+
+- `researchboss.engine.vault.list_uploaded_artefacts`
+
+CLI equivalent: `researchboss doc uploads`.
+
+### `GET /api/v1/artefacts/uploads/{upload_id}/file` (implemented)
+
+Serves the raw bytes of an uploaded artefact's renamed vault copy, for a browser preview (modal/`<iframe>`/`<img>`), not download — `Content-Disposition: inline` is set explicitly. Found missing alongside the route above: no route in this contract served raw file bytes at all (everything else returns the JSON envelope), which would have blocked the popup preview view (see the Phase 10 TODO items) regardless of which UI framework Phase 10 picks. Media type is resolved from a fixed extension map matching `sources.ALLOWED_EXTENSIONS` rather than `mimetypes.guess_type` (platform-dependent, notably for `.md`). `404 upload_file_unavailable` for an unknown `upload_id`; `400 upload_file_unavailable` if the ledger's recorded path has gone missing or no longer resolves inside `document_vault/` (defense against a hand-edited ledger pointing outside the vault — see `vault.resolve_uploaded_artefact_file`'s docstring). Read-only; never modifies the file. Note: `sources.ALLOWED_EXTENSIONS` (shared with source-folder scanning) does not currently include image extensions, so an image-file preview is not yet reachable through the upload pipeline this route serves — that gap belongs to the upload extension allow-list, not this route.
+
+Engine source:
+
+- `researchboss.engine.vault.resolve_uploaded_artefact_file`
+
+No CLI equivalent — the CLI already has direct filesystem access to `vault_renamed_path` from `researchboss doc uploads`; this route exists only because a browser client cannot read the local filesystem directly.
+
 ## Zotero Routes
 
 ### `GET /api/v1/zotero/local/collections` (implemented)
