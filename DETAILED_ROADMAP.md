@@ -395,13 +395,15 @@ Next work:
 
 ### Phase 10: Cross-Platform UI Preparation
 
-Status: API contract defined, UI strategy not started.
+Status: complete. UI strategy decided and implemented.
 
-Next work:
+Decision: FastAPI + Jinja2 server-rendered shell + vanilla JavaScript (`researchboss/web/`), no build toolchain, no third-party JS/CSS dependency, no CDN assets. Mounted onto the same FastAPI app `researchboss serve` already runs — no separate process, port, or deployment step. The web layer has no import path to `researchboss.engine`: it only imports session-cookie helpers from `researchboss.api.auth`, and every data operation happens client-side via `fetch()` calls to the existing, tested `/api/v1/*` routes — the web UI is architecturally just another API client. React/Vue/Svelte/Flutter were considered and passed on; `docs/PACKAGING.md`'s conditional Flutter desktop-sidecar section is now historical.
 
-- Document UI strategy.
-- Use `docs/api/CONTRACT.md` as the first UI/backend contract.
-- Keep UI logic outside engine/core.
+Built: `GET /login` (public) and `GET /` (server-side session-gated — redirects to `/login` before rendering anything, not just after a failed client-side call) shell pages; drag-and-drop batch upload with pre-submission limits (new `GET /api/v1/artefacts/upload/limits` route); a batch-upload results view; a popup preview modal (PDF via `<iframe>`, text/Markdown/CSV/JSON fetched into `<pre>`, download-fallback for unsupported types); a cross-reference review overlay (accept/reject per candidate, then apply); an About/License footer modal. Two new API routes were needed and added along the way: `GET /api/v1/artefacts/uploads` (list) and `GET /api/v1/artefacts/uploads/{upload_id}/file` (inline file bytes for preview) — nothing previously served raw file bytes at all.
+
+Found and fixed two real bugs while verifying this against an actual `pip install` rather than just the source-tree test suite: (1) a circular import (`api/__init__.py` eagerly re-exported `create_app`, which round-tripped through `web/app.py` back into `api.auth`; fixed by emptying the unused re-export) that only manifested if `researchboss.web.app` was imported before `researchboss.api`, which every test/smoke script in this repo happened never to do; and (2) missing `package-data` in `pyproject.toml`, so a real wheel install wouldn't have shipped the `templates/`/`static/` files at all. Both confirmed fixed by building a real wheel and installing it into a throwaway venv — not just re-running pytest.
+
+Not built, and not needed yet: a separate desktop or mobile shell (the responsive web page covers the stated use case; nothing currently asks for one). Citation-plan-specific review UI beyond the cross-reference overlay (citations already have their own `POST /api/v1/citations/plan/insertion-review` API route and CLI command, just no dedicated web view yet) — a reasonable next increment if it's ever asked for, not added speculatively here.
 
 ### Phase 11: Packaging
 
@@ -409,16 +411,15 @@ Status: planning complete (`docs/PACKAGING.md`); no actual packaged build has be
 
 Done:
 
-- Packaging plan covering CLI, local API, workspace SQLite (stdlib `sqlite3`, nothing to bundle), document vault files (plain workspace files, not a packaging concern), and desktop UI (explicitly deferred to Phase 10's still-open UI framework decision).
+- Packaging plan covering CLI, local API, workspace SQLite (stdlib `sqlite3`, nothing to bundle), document vault files (plain workspace files, not a packaging concern), and the web UI (Phase 10 decided against Flutter; `researchboss/web/` ships as part of the same package via `[tool.setuptools.package-data]`, verified against a real wheel install — no separate packaging concern).
 - PyInstaller recipe plus two gotchas identified from known uvicorn/PyInstaller interaction patterns rather than verified against a real build yet: uvicorn's dynamic loop/protocol imports and `python-multipart` (only imported at upload-request time) both need explicit `--hidden-import`/`--collect-all` treatment or the packaged binary will fail specifically at `researchboss serve` / file-upload time despite a clean `pyinstaller` exit code.
-- Flutter desktop sidecar notes, written as explicitly conditional on Phase 10 choosing Flutter — reuses the PyInstaller binary as a spawned sidecar rather than embedding a second Python runtime, with a per-launch random `RESEARCHBOSS_API_PASSWORD` and ephemeral port kept internal to the app (not something an end user manages).
+- Flutter desktop sidecar notes: now historical/moot — Phase 10 chose a Jinja2 + vanilla-JS web UI mounted directly on the existing FastAPI app instead, with no separate shell process for this section's sidecar model to apply to.
 - Fixed a real, concrete gap found while researching platform coverage: `workspace.zotero_storage_candidates()` had no Linux branch at all (fell through to an empty list — `researchboss init` could never auto-detect Zotero on Linux). Added native (`~/Zotero/storage`, `~/.zotero/zotero/*/zotero/storage`) and Flatpak (`~/.var/app/org.zotero.Zotero/data/zotero/storage`) candidates, matching the existing macOS/Windows "first existing candidate wins" pattern. Snap-packaged Zotero left as an explicit known gap rather than guessed at.
 - Confirmed (by reading `ocr_readiness_report()`, not assuming) that OCR fallback depends on system-installed `tesseract`/`pdftoppm` located via `shutil.which()` — external CLI tools PyInstaller cannot bundle. Documented as an explicit end-user prerequisite for packaged builds rather than left to silently report "unavailable."
 
 Next work:
 
 - Produce and test an actual PyInstaller build against the two identified gotchas — the plan is unverified against a real binary.
-- Everything else in this phase is blocked on Phase 10's UI decision or is speculative until then.
 
 ### Phase 12: NAS Deployment (research.veloso.dev)
 
@@ -429,13 +430,13 @@ Done:
 - `Dockerfile`: `python:3.11-slim`, `pip install .`, single-process `uvicorn researchboss.api.app:app` (no `--workers` — see the file's own comment: session state in `researchboss/api/auth.py` is an in-memory dict, so more than one process/replica would randomly fail logins depending which one handled a given request), a `HEALTHCHECK` hitting `/health`, and `tesseract`/`poppler-utils` installed so the deployed instance can actually use the `--ocr` conversion fallback (unlike a PyInstaller desktop build, a container can bundle these).
 - `docker-compose.yml`: bind-mounts `./data/workspaces` to `/data/workspaces` (matching `RESEARCHBOSS_WORKSPACE_ROOT`) rather than an opaque named volume, so workspace files stay directly inspectable/backupable on the NAS's own filesystem; `RESEARCHBOSS_API_PASSWORD` required via Compose's `:?` syntax (refuses to start rather than silently running without one, consistent with the API's own fail-closed behavior); other `RESEARCHBOSS_*` env vars optional with the same defaults the app itself uses.
 - Extended the existing `.env.example` (already the file `researchboss/api/auth.py`, `zotero_api.py`, and `ai.py` all read via the shared `Path.cwd()/.env` convention) with the new deployment-related variables, rather than inventing a second env-file mechanism.
-- `docs/DEPLOY.md`: local test-before-deploy steps, the exact `synology-site deploy` invocation (`--source-dir` to build on the NAS without needing a registry, `--port 8000` for automatic Cloudflare routing, `--health-path /health`), setting up a workspace per research project via `POST /api/v1/projects/init` against the mounted root, `update`/rollback behavior (session invalidation on restart is expected, not a bug), and why license/developer-info consistency (the last Phase 12 TODO item) is blocked on both an actual deployment and Phase 10 producing a page for a human to load in the first place.
-- Verified what could be verified without Docker (not available in this environment): a genuinely clean-venv `pip install .` followed by running the Dockerfile's exact `CMD` served `/health` successfully. The container build itself (base image, `apt-get` layer, healthcheck) was not verified and is documented as the reader's first step, not claimed as done.
+- `docs/DEPLOY.md`: local test-before-deploy steps, the exact `synology-site deploy` invocation (`--source-dir` to build on the NAS without needing a registry, `--port 8000` for automatic Cloudflare routing, `--health-path /health`), setting up a workspace per research project via `POST /api/v1/projects/init` against the mounted root, `update`/rollback behavior (session invalidation on restart is expected, not a bug), and why license/developer-info consistency (the last Phase 12 TODO item) is blocked on an actual deployment — Phase 10 now has a page to check (the About/License footer modal in `researchboss/web/`), so that half of the earlier blocker is resolved.
+- Verified what could be verified without Docker (not available in this environment): a genuinely clean-venv `pip install .` followed by running the Dockerfile's exact `CMD` served `/health` successfully, and separately, a real wheel build+install confirmed the web UI's templates/static assets ship correctly and both import orderings resolve (see the Phase 10 circular-import fix). The container build itself (base image, `apt-get` layer, healthcheck) was not verified and is documented as the reader's first step, not claimed as done.
 
 Next work:
 
 - Actually run the `synology-site deploy research.veloso.dev` command above — needs real NAS SSH access and Cloudflare credentials neither this environment nor an unattended session should have.
-- Confirm license/developer-info consistency on the live site once it exists and Phase 10 has a page to check.
+- Confirm license/developer-info consistency on the live site once it exists — the content itself (`researchboss/web/templates/index.html`'s About modal) is already in place and matches the README/LICENSE; this step is purely "check it renders correctly once actually deployed."
 
 ## 5. CLI Audit
 
@@ -740,13 +741,13 @@ Missing:
 
 ## 15. Immediate Next Steps
 
-Every deterministic item across Phases 8, 9, and 11 that did not require either a live infrastructure credential or a product decision on AI cost/privacy tradeoffs is now complete: Phase 8 (document vault, versioning, restoration, uploaded-artefact intake, derived-text/anchor extraction), Phase 9 (every route in `docs/api/CONTRACT.md` except the disabled Future AI Routes section — including login protection, validation, citation plans, guidelines, SQLite sync status, `RESEARCHBOSS_WORKSPACE_ROOT` containment, batch artefact upload, and cross-reference candidates/apply), and Phase 11 planning (`docs/PACKAGING.md`) plus the Phase 12 deployment artifacts (`Dockerfile`, `docker-compose.yml`, `docs/DEPLOY.md` — written but not deployed, since that needs real NAS/Cloudflare credentials).
+Every deterministic item across Phases 8, 9, 10, and 11 that did not require either a live infrastructure credential or a product decision on AI cost/privacy tradeoffs is now complete: Phase 8 (document vault, versioning, restoration, uploaded-artefact intake, derived-text/anchor extraction), Phase 9 (every route in `docs/api/CONTRACT.md` except the disabled Future AI Routes section — including login protection, validation, citation plans, guidelines, SQLite sync status, `RESEARCHBOSS_WORKSPACE_ROOT` containment, batch artefact upload, cross-reference candidates/apply, and both review-status routes), Phase 10 (the web UI framework decision was made and the full UI built — see the Phase 10 section above), and Phase 11 planning (`docs/PACKAGING.md`) plus the Phase 12 deployment artifacts (`Dockerfile`, `docker-compose.yml`, `docs/DEPLOY.md` — written but not deployed, since that needs real NAS/Cloudflare credentials).
 
 What's left is genuinely blocked, not just undone:
 
 1. A novelty assessment route under explicit AI opt-in.
-   - Why: unlike every other Phase 9 route group, novelty assessment has no deterministic engine path — `researchboss.engine.ai.ai_novelty_assessment` always calls OpenAI, so a route needs the same per-request AI opt-in, cost-awareness, and privacy-boundary rules as the Future AI Routes section, not just mechanical route-wrapping.
-   - Likely files: `docs/api/CONTRACT.md` additions under Future AI Routes, new `researchboss/api/routers/ai.py`, tests proving the AI opt-in and safe-context boundaries.
+   - Why: unlike every other Phase 9 route group, novelty assessment has no deterministic engine path — `researchboss.engine.ai.ai_novelty_assessment` always calls OpenAI, so a route needs the same per-request AI opt-in, cost-awareness, and privacy-boundary rules as the Future AI Routes section, not just mechanical route-wrapping. The shape is already sketched (`docs/api/CONTRACT.md`'s Future AI Routes section) — what's missing is the actual opt-in/cost decision and implementation.
+   - Likely files: new `researchboss/api/routers/ai.py`, tests proving the AI opt-in and safe-context boundaries.
    - Tests: route requires explicit opt-in, never sends whole documents by default, API key never returned/logged.
    - Complexity: medium — mostly gated by the explicit-AI-opt-in design already used elsewhere, not new design.
    - Phase: 9 (Future AI Routes).
@@ -755,8 +756,8 @@ What's left is genuinely blocked, not just undone:
    - Why: both are AI-tagged and need the same explicit opt-in/privacy-boundary treatment as novelty above. The anchor infrastructure AI edit sessions need (paragraph/sentence IDs, citation insertion anchors) is now built — this is purely an AI-design gate, not missing engine work.
    - Phase: 8/9.
 
-3. Phase 10 UI strategy (framework choice: React/Vue/Flutter/other) and Phase 12's actual `synology-site deploy` run.
-   - Why: both need a decision or credential this environment does not have and should not make/use unattended — a UI framework is a long-term commitment with real switching costs, and a live deployment needs real NAS/Cloudflare access.
+3. Phase 12's actual `synology-site deploy` run, and a dedicated citation-plan review web view (the API/CLI side is done; only the cross-reference overlay has a web view so far).
+   - Why: the deployment needs a real NAS/Cloudflare credential this environment does not have; the citation web view is a reasonable next increment, not something blocked on anything, just not built yet since nothing has asked for it specifically.
    - Phase: 10, 12.
 
 ## 15a. Useful Ideas Learned From `../pdf-merge`
@@ -782,7 +783,7 @@ Not suitable for MVP right now:
 
 ## 16. Recommended Resume Point
 
-Phase 8 (document vault, versioning, restoration, uploaded-artefact intake, derived-text/anchor extraction) is complete. Phase 9 FastAPI implements every route in `docs/api/CONTRACT.md` except the disabled Future AI Routes section. Phase 11 planning and Phase 12's deployment artifacts are written but not executed. Everything genuinely actionable without either an AI cost/privacy decision, a UI framework decision, or live infrastructure credentials is done. Resume with: an explicitly AI-gated novelty route (Phase 9), AI edit sessions (Phase 8, anchor infrastructure already built), a Phase 10 UI framework decision, or actually running the Phase 12 NAS deployment. AI work remains intentionally separated behind explicit opt-in and privacy-boundary tests.
+Phase 8 (document vault, versioning, restoration, uploaded-artefact intake, derived-text/anchor extraction) is complete. Phase 9 FastAPI implements every route in `docs/api/CONTRACT.md` except the disabled Future AI Routes section (now shape-sketched, not implemented). Phase 10 is complete: a Jinja2 + vanilla-JS web UI (`researchboss/web/`) is built, tested, and mounted onto the same FastAPI app, covering login, drag-and-drop upload, batch results, popup preview, cross-reference review, and an About/License footer. Phase 11 planning and Phase 12's deployment artifacts are written but not executed. Everything genuinely actionable without either an AI cost/privacy decision or live infrastructure credentials is done. Resume with: an explicitly AI-gated novelty route (Phase 9), AI edit sessions (Phase 8, anchor infrastructure already built), AI-assisted cross-reference suggestions (Phase 9), a dedicated citation-plan review web view (Phase 10, API/CLI side already done), or actually running the Phase 12 NAS deployment. AI work remains intentionally separated behind explicit opt-in and privacy-boundary tests.
 
 ## 17. Maintenance Rule
 

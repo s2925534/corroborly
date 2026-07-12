@@ -10,7 +10,7 @@ Packaging status: planned. Nothing in this document has been built yet — it ex
 - **Local API** (`researchboss serve`, `researchboss.api`) — FastAPI + uvicorn, needed once a desktop or web UI exists to talk to.
 - **Workspace SQLite** — uses Python's stdlib `sqlite3` module; no separate SQLite binary to bundle.
 - **Document vault, workspace YAML/Markdown files** — plain files inside a workspace folder; not a packaging concern themselves, but the packaged app must be able to read/write an arbitrary user-chosen folder (no packaging sandbox that blocks that).
-- **Optional desktop UI** — not built yet (Phase 10). This plan's Flutter section is explicitly conditional on that phase choosing Flutter as the UI shell; nothing here should be read as committing to that choice.
+- **Web UI** — built (Phase 10): `researchboss/web/`, a Jinja2 + vanilla-JS shell mounted onto the same FastAPI app `researchboss serve` already runs. No separate build step, no separate packaging concern beyond what `[tool.setuptools.package-data]` already handles (bundling `templates/`/`static/` into the wheel) — it ships as part of the existing CLI/API package. Phase 10 did not choose Flutter; the "Future Flutter Desktop Packaging Notes" section below is historical/moot and kept only for context on the option that was considered and passed on.
 
 ## Distribution Approaches
 
@@ -43,9 +43,9 @@ Known gotchas to verify against, not yet confirmed against a real build:
 - **`sqlite3`.** Bundled with the CPython stdlib; PyInstaller normally includes the `_sqlite3` extension module automatically, but this should be explicitly verified on macOS (where the system Python's SQLite build has caused issues for other projects) rather than assumed.
 - **Verify the actual binary, not just that `pyinstaller` exits 0.** Run `researchboss doctor`, `researchboss init` (into a throwaway folder), and `researchboss serve` (hit `/health`) from the packaged executable before calling a platform build done — a clean PyInstaller exit code does not guarantee the runtime imports above actually resolved.
 
-## Future Flutter Desktop Packaging Notes (Conditional)
+## Future Flutter Desktop Packaging Notes (Moot — Phase 10 Did Not Choose Flutter)
 
-This section only applies if Phase 10's UI strategy decides on Flutter as the desktop shell. It is not a commitment to that choice — see `docs/api/CONTRACT.md` and the Phase 10 TODO items, which are explicitly still open.
+Phase 10 chose a Jinja2 + vanilla-JS web UI (`researchboss/web/`) instead, mounted directly onto the existing FastAPI app — no separate shell process, no sidecar, nothing this section's Flutter-sidecar model would apply to. Left in place as a record of the option that was considered, not as a live plan; do not build against it.
 
 If Flutter is chosen, the local API should run as a sidecar process the Flutter app spawns on launch and stops on exit, rather than embedding a second Python runtime inside the Flutter bundle:
 

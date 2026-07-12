@@ -732,6 +732,14 @@ Engine source:
 
 - `researchboss.engine.project_log.add_context_change`
 
+## Web UI Routes (implemented)
+
+`researchboss/web/` mounts a server-rendered HTML shell onto the same FastAPI app as everything above — same process, same `researchboss serve`, no separate deployment step. These routes serve HTML (or static files), not the `{"ok","data","warnings","errors"}` envelope, and are outside `/api/v1`, but the Non-Negotiable Boundaries above still apply in full: the web layer has no import path to `researchboss.engine` at all (`researchboss/web/app.py` only imports session-cookie helpers from `researchboss.api.auth`, plus Jinja2/Starlette), and every data operation happens client-side via `fetch()` calls to the `/api/v1/*` routes documented above — the web UI is architecturally just another API client, enforced by import structure rather than convention.
+
+- `GET /login` — public, no session required. Serves the login form; the form itself posts to `POST /api/v1/auth/login`.
+- `GET /` — the app shell. Session-gated *server-side*: reads the session cookie directly and issues a `303` redirect to `/login?next=<url>` before rendering anything if there's no valid session, rather than sending an empty shell that discovers it's unauthenticated only after a client-side API call. Workspace selection is a `?workspace=` query param, mirroring how every `/api/v1/*` route already takes an explicit `workspace` — there is no server-side session-scoped "current workspace."
+- `GET /static/*` — `app.js` (vanilla JS, no framework, no bundler) and `styles.css` (hand-written, no CSS framework). No CDN dependency anywhere, consistent with this project staying usable offline.
+
 ## Future AI Routes
 
 **Not implemented.** The route shapes below are a planning sketch only, modeled directly on the equivalent CLI commands and their `researchboss.engine.ai` functions (which already exist and are exercised by the CLI today) so that a future implementation has no ambiguity to resolve at build time. Adding these routes for real still requires: (1) an explicit product decision on how a *web* client performs the CLI's per-invocation `--ai` opt-in (sketched below as a required `"ai": true` request-body field, mirroring the CLI rather than introducing a session-wide or workspace-wide AI toggle), and (2) the privacy-boundary tests listed under "Required Tests Before Implementation." Until both exist, these routes must stay disabled/unregistered — do not wire them into `researchboss/api/app.py`.

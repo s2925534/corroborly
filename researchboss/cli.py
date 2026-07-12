@@ -226,7 +226,7 @@ console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
 CLI_DEFAULTS_FILE = ".researchboss-cli.local.yaml"
 MIN_PYTHON = (3, 11)
-REQUIRED_RUNTIME_MODULES = ["click", "typer", "rich", "pydantic", "yaml", "fastapi", "uvicorn", "python_multipart"]
+REQUIRED_RUNTIME_MODULES = ["click", "typer", "rich", "pydantic", "yaml", "fastapi", "uvicorn", "python_multipart", "jinja2"]
 
 
 def _runtime_check_errors() -> list[str]:

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResearchBoss</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>ResearchBoss</h1>
+  <div class="workspace-bar">
+    <input id="workspace-input" placeholder="Workspace path (e.g. /path/to/project)">
+    <button id="workspace-load" type="button">Load</button>
+    <button id="logout-btn" type="button" class="secondary">Sign out</button>
+  </div>
+</header>
+
+<p id="workspace-error" class="error banner" hidden></p>
+
+<main id="app-main" hidden>
+  <section class="panel">
+    <h2>Upload artefacts</h2>
+    <p id="upload-limits" class="muted small"></p>
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <span>Drag &amp; drop files here, or <span id="browse-link" class="link">browse</span></span>
+      <input id="file-input" type="file" multiple hidden>
+    </div>
+    <div id="upload-report" class="upload-report"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Uploaded artefacts</h2>
+    <table id="uploads-table" class="data-table">
+      <thead>
+        <tr><th>Title</th><th>Original file</th><th>Renamed file</th><th>Cross-references</th><th></th></tr>
+      </thead>
+      <tbody id="uploads-tbody"></tbody>
+    </table>
+    <p id="uploads-empty" class="muted small" hidden>No artefacts uploaded yet.</p>
+  </section>
+</main>
+
+<div id="preview-modal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+    <div class="modal-header">
+      <span id="preview-title"></span>
+      <button type="button" class="close-btn" data-close="preview-modal" aria-label="Close">&times;</button>
+    </div>
+    <div id="preview-body" class="modal-body"></div>
+  </div>
+</div>
+
+<div id="crossref-modal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="crossref-title">
+    <div class="modal-header">
+      <span id="crossref-title">Cross-reference candidates</span>
+      <button type="button" class="close-btn" data-close="crossref-modal" aria-label="Close">&times;</button>
+    </div>
+    <div id="crossref-body" class="modal-body"></div>
+    <div class="modal-footer">
+      <button id="crossref-apply-btn" type="button">Apply accepted links</button>
+    </div>
+  </div>
+</div>
+
+<div id="about-modal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
+    <div class="modal-header">
+      <span id="about-title">About ResearchBoss</span>
+      <button type="button" class="close-btn" data-close="about-modal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>ResearchBoss — local-first, evidence-first research workspace.</p>
+      <p><strong>MIT License.</strong> Copyright (c) 2026 Pedro Veloso.</p>
+      <p class="small muted">
+        Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+        and associated documentation files, to deal in the Software without restriction, including
+        without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+        and/or sell copies of the Software, subject to the above copyright notice and this permission
+        notice being included in all copies or substantial portions of the Software.
+      </p>
+      <p class="small muted">
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+        BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+        NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+        DAMAGES OR OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE.
+      </p>
+      <p>Author: Pedro Veloso — <a href="mailto:pedro@veloso.dev">pedro@veloso.dev</a></p>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  <button id="about-link" type="button" class="link">About / License</button>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

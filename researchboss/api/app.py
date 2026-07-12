@@ -29,6 +29,7 @@ from researchboss.api.routers import (
     validation,
     zotero,
 )
+from researchboss.web.app import mount_web
 
 
 def create_app() -> FastAPI:
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(citations.router, prefix="/api/v1/citations", tags=["citations"], dependencies=protected)
     app.include_router(guidelines.router, prefix="/api/v1/guidelines", tags=["guidelines"], dependencies=protected)
     app.include_router(db.router, prefix="/api/v1/db", tags=["db"], dependencies=protected)
+    mount_web(app)
     return app
 
 

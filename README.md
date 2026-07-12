@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.10.0
+Current version: 0.11.0
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
@@ -38,6 +38,7 @@ Phase 1 complete:
 - Offline Zotero collection listing, selected-collection mode, notes/tags/relations metadata, metadata reports, health reports, snapshots, duplicate checks, and BibTeX export
 - Optional read-only Zotero Web API credential test, collection listing, and collection selection
 - Local FastAPI boundary documented in `docs/api/CONTRACT.md`, with every documented route implemented through `researchboss serve` except the disabled Future AI Routes section
+- Web UI (`researchboss/web/`) served by the same `researchboss serve` process — login, workspace loading, drag-and-drop upload, popup preview, cross-reference review, About/License footer
 - TXT, MD, DOCX, and page-marked PDF conversion into `sources_text/`
 - Conversion cache keyed by source hash and failed conversion records under `sources_failed/`
 - Deterministic citation metadata extraction without inventing missing fields
@@ -473,13 +474,28 @@ Every route documented in `docs/api/CONTRACT.md` is implemented except the disab
 
 `GET /api/v1/artefacts/cross-reference?upload_id=<id>` proposes deterministic links between an uploaded artefact and existing artefacts, sources, and claims, based on shared keyword tokens in titles and filenames. It only ever writes a candidate report (`outputs/recommendations/cross-reference-<upload_id>.yaml`) — never an artefact, source, or claim record. `POST /api/v1/artefacts/cross-reference/candidate-review?upload_id=<id>` sets one candidate's `review_status` (`needs_human_review`/`accepted`/`approved`/`rejected`) without hand-editing that report file — the API equivalent of what a CLI user can already do with a text editor. `POST /api/v1/artefacts/cross-reference/apply` then writes reviewed candidates (`review_status: accepted`/`approved`) as metadata on the *upload* record — a `cross_references` list, not text inserted into any document — following the same review-before-apply pattern as citation plans.
 
-`GET /api/v1/artefacts/uploads` lists previously uploaded artefacts, and `GET /api/v1/artefacts/uploads/{upload_id}/file` serves an uploaded artefact's renamed vault copy as raw bytes with `Content-Disposition: inline`, for a future web UI preview modal to render directly rather than force a download. Both are read-only.
+`GET /api/v1/artefacts/uploads` lists previously uploaded artefacts, `GET /api/v1/artefacts/uploads/{upload_id}/file` serves an uploaded artefact's renamed vault copy as raw bytes with `Content-Disposition: inline` (used by the web UI's preview modal below), and `GET /api/v1/artefacts/upload/limits` reports the configured batch-upload limits so a client can display them before submission. All three are read-only.
+
+`POST /api/v1/citations/plan/insertion-review` sets one citation-plan insertion's `review_status` the same way the cross-reference route above does, so a browser client never needs filesystem access to hand-edit the plan YAML.
 
 Set `RESEARCHBOSS_API_PASSWORD` (env var or `.env` in the server's working directory) before starting the server. Every `/api/v1` route except `/api/v1/auth/login` requires a valid session and fails closed with `503 auth_not_configured` if no password is set — it never falls back to open access. Log in with `POST /api/v1/auth/login {"password": "..."}` to receive a session (an httponly cookie, and the same token usable as `Authorization: Bearer <token>`); sessions live in server memory only (default 12-hour expiry, `RESEARCHBOSS_API_SESSION_HOURS` to override) and are cleared on server restart. `POST /api/v1/auth/logout` invalidates the current session. There is no public self-registration route.
 
 Set `RESEARCHBOSS_WORKSPACE_ROOT` when deploying against a mounted volume (e.g. a NAS bind-mount): every `workspace` query value must then resolve inside that root — relative paths are joined to it, absolute paths outside it are rejected with `400 workspace_outside_root` — rather than accepting any path reachable by the server process. Leave it unset for local-first single-user CLI-equivalent use, where any absolute path works exactly as it does today.
 
-A `Dockerfile` and `docker-compose.yml` at the repo root package this API for deployment; see `docs/DEPLOY.md` for local testing, the deploy command, per-project workspace setup, and update/rollback steps.
+A `Dockerfile` and `docker-compose.yml` at the repo root package this API (and the web UI below, same process) for deployment; see `docs/DEPLOY.md` for local testing, the deploy command, per-project workspace setup, and update/rollback steps.
+
+## Web UI
+
+`researchboss serve` also serves a web UI at `/` (and `/login`), mounted onto the same FastAPI app and process as the API above — no separate build, port, or deployment step. It's a Jinja2-rendered shell plus one hand-written `app.js` (vanilla JavaScript, no framework, no bundler, no CDN dependency) that talks to the same `/api/v1/*` routes documented above; the web layer has no import path to `researchboss.engine` at all.
+
+- `/login` is public; `/` is session-gated server-side (redirects to `/login?next=<url>` before rendering anything if there's no valid session cookie, not just after a failed client-side call).
+- Once logged in, enter a workspace path (mirroring every API route's `?workspace=` parameter — there is no server-side "current workspace" session state) to load its artefact list and uploaded-artefact list.
+- Drag-and-drop (or browse) batch upload, with limits shown before you pick files (`GET /api/v1/artefacts/upload/limits`) and a per-file results table after.
+- A popup preview modal per uploaded artefact (PDF via the browser's native viewer, text/Markdown/CSV/JSON inline, image types once `sources.ALLOWED_EXTENSIONS` gains image support, everything else falls back to an "open in a new tab" link), dismissible by Escape, the close button, or clicking outside the modal.
+- A cross-reference review overlay per upload: accept/reject each proposed candidate, then apply the accepted ones — the same `candidate-review`/`apply` routes above, with zero filesystem hand-editing.
+- An "About / License" footer link with the MIT license text and author contact info, sourced from `LICENSE`/this README.
+
+React, Vue, Svelte, and Flutter were considered for Phase 10 and passed on in favor of this: for a local-first, single-user tool whose API was already fully built and tested, a thin server-rendered shell that's just another API client keeps the whole stack pure Python plus one small JS file, with no Node/npm toolchain to install, audit, or keep updated.
 
 ## Abstract Screening and External Candidate Import
 
@@ -539,9 +555,9 @@ The detailed living roadmap is maintained in `DETAILED_ROADMAP.md`. Update that 
 6. Add deterministic document validation, guideline handling, citation assistance, and later explicit AI opt-ins for whole-document workflows.
 7. Optional workspace SQLite memory, indexing, and sync complete for deterministic local MVP paths.
 8. Document vault, versioning, restoration, uploaded-artefact intake, and derived-text/anchor extraction complete for deterministic local MVP paths (`researchboss doc version/versions/diff/restore/compare/upload/uploads/derive-text`); AI edit sessions remain future work, gated on AI opt-in/privacy-boundary design rather than anchoring infrastructure.
-9. Local FastAPI backend: every route in `docs/api/CONTRACT.md` implemented via `researchboss serve`, including single-user login protection, validation, citation plans, guidelines, SQLite sync status, `RESEARCHBOSS_WORKSPACE_ROOT` containment, batch artefact upload, and deterministic cross-reference candidates plus apply, except the disabled Future AI Routes section. Novelty assessment and AI-assisted cross-reference stay out until they can be added under explicit AI opt-in and privacy-boundary rules.
-10. Prepare a cross-platform UI.
-11. Packaging plan complete (`docs/PACKAGING.md`): PyInstaller recipe with known uvicorn/`python-multipart` gotchas, conditional Flutter sidecar notes, and platform considerations. No packaged build produced or tested yet.
+9. Local FastAPI backend: every route in `docs/api/CONTRACT.md` implemented via `researchboss serve`, including single-user login protection, validation, citation plans, guidelines, SQLite sync status, `RESEARCHBOSS_WORKSPACE_ROOT` containment, batch artefact upload, and both review-before-apply flows (cross-reference candidates and citation-plan insertions), except the disabled Future AI Routes section (shape-sketched, not implemented). Novelty assessment and AI-assisted cross-reference stay out until they can be added under explicit AI opt-in and privacy-boundary rules.
+10. Web UI complete: Jinja2 + vanilla-JS shell (`researchboss/web/`) mounted on the same FastAPI app, covering login, workspace loading, drag-and-drop upload, batch results, popup preview, cross-reference review, and an About/License footer. React/Vue/Svelte/Flutter considered and passed on in favor of a dependency-free thin API client.
+11. Packaging plan complete (`docs/PACKAGING.md`): PyInstaller recipe with known uvicorn/`python-multipart` gotchas and platform considerations; the web UI ships as package data in the same wheel, verified against a real clean-venv install. No PyInstaller binary produced or tested yet.
 12. NAS deployment (`research.veloso.dev`): `Dockerfile`, `docker-compose.yml`, and `docs/DEPLOY.md` written, using `../synology-site-deployer` unmodified. Nothing has actually been deployed yet — that step needs real NAS/Cloudflare infrastructure access.
 
 ## Repository Hygiene

@@ -164,6 +164,25 @@ async def _spool_upload_to_temp(upload: UploadFile, destination: Path, max_bytes
             written += len(chunk)
 
 
+@router.get("/upload/limits")
+def artefacts_upload_limits() -> dict[str, Any]:
+    """Report the configured batch-upload limits so a client can surface them before submission.
+
+    Not workspace-scoped — these are server-wide config values
+    (RESEARCHBOSS_UPLOAD_MAX_FILES/MAX_FILE_SIZE_MB, plus the shared
+    extension allow-list), not something that varies per workspace. Found
+    missing while building the web upload view: without this, a client can
+    only learn the limits by hitting them and reading the 400 error.
+    """
+    return ok(
+        {
+            "max_files": _int_env("RESEARCHBOSS_UPLOAD_MAX_FILES", DEFAULT_UPLOAD_MAX_FILES),
+            "max_file_size_mb": _float_env("RESEARCHBOSS_UPLOAD_MAX_FILE_SIZE_MB", DEFAULT_UPLOAD_MAX_FILE_SIZE_MB),
+            "allowed_extensions": sorted(ALLOWED_EXTENSIONS),
+        }
+    )
+
+
 @router.post("/upload")
 async def artefacts_upload(
     files: list[UploadFile] = File(...),
