@@ -288,3 +288,84 @@
 - [ ] **API** - Deploy the ResearchBoss backend and web UI to the NAS as `research.veloso.dev` using `synology-site deploy research.veloso.dev --compose-file ... --port ...` from `../synology-site-deployer`, without modifying that project. Not done: requires real NAS/Cloudflare credentials and infrastructure access this environment does not have — `docs/DEPLOY.md` documents the exact command to run.
 - [x] **Done** - **Deterministic** - Add deploy documentation covering the Compose file, required `.env` values, the mounted workspace volume path, login credential setup, and update/rollback steps via `synology-site update research.veloso.dev` (`docs/DEPLOY.md`).
 - [ ] **Deterministic** - Confirm the MIT license, no-warranty statement, and developer/contact information stay consistent between this project's README and the publicly reachable `research.veloso.dev` deployment. Blocked on the actual deployment above (item 282) and on Phase 10 producing a page for a human to load — nothing on the API itself is a place for a license notice; see `docs/DEPLOY.md`'s note on this.
+
+## Phase 13: Web UI Shell — Navigation and Workspace Dashboard
+
+Phase 10 shipped a single upload-focused page. Everything below this point is a brainstormed inventory of the rest of the CLI's functionality that has no web UI yet, organized into phases by feature area — not strictly ordered, and not all equally valuable; Phase 13 is genuinely foundational (real navigation has to exist before more views make sense to add), the rest can be tackled in whatever order matches actual need. Each item names the API route it would use if one already exists, or says explicitly that a new route is needed first. None of this is started.
+
+- [ ] **API** - Add a persistent navigation shell (sidebar or tabs) to `researchboss/web/` replacing the current single-view layout, so each feature area below can be its own page/section without every future phase re-inventing navigation.
+- [ ] **API** - Add a "Create workspace" view calling `POST /api/v1/projects/init`, so a new workspace can be created from the browser instead of only via `researchboss init`'s interactive CLI wizard.
+- [ ] **API** - Add a workspace dashboard view showing `GET /api/v1/projects/status` and `GET /api/v1/projects/health` output (source counts, health check results) as the landing page after loading a workspace.
+- [ ] **API** - Add a workspace report view rendering `GET /api/v1/reports/workspace` and `GET /api/v1/reports/timeline` output.
+- [ ] **Deterministic** - Persist the last-used workspace path in browser `localStorage` (not server-side session state — every API route already takes an explicit `workspace` param, and that shouldn't change) so returning to `/` doesn't require re-typing the path every time.
+
+## Phase 14: Web UI — Source Management
+
+The source inbox/review workflow (`sources accept/maybe/ignore/note/tag`) is one of the most-used CLI command groups and currently has zero web UI coverage.
+
+- [ ] **API** - Add a source inbox list view (`GET /api/v1/sources`), filterable by `pending_review`/`accepted`/`maybe`/`ignored`.
+- [ ] **API** - Add accept/maybe/ignore review actions per source (`POST /api/v1/sources/{source_id}/status`).
+- [ ] **API** - Add note and tag editing per source (`POST /api/v1/sources/{source_id}/note`, `POST /api/v1/sources/{source_id}/tags`).
+- [ ] **API** - Add a "Scan" action triggering `POST /api/v1/sources/scan` against a configured local folder or Zotero storage path, with the resulting scan summary shown inline.
+- [ ] **API** - Add a source review report view (`GET /api/v1/sources/report`).
+
+## Phase 15: Web UI — Artefact Registry and Research Questions
+
+- [ ] **API** - Add an artefact registry list view (`GET /api/v1/artefacts`) — distinct from the existing "uploaded artefacts" table, which only shows document-vault uploads. The full registered-artefact list has no web view at all today.
+- [ ] **API** - Add a manual artefact registration form (`POST /api/v1/artefacts`) and a deterministic artefact creation action (`POST /api/v1/artefacts/create`).
+- [ ] **API** - Add artefact review-status controls (`POST /api/v1/artefacts/{artefact_id}/review`) and a dependency-check view (`GET /api/v1/artefacts/dependencies`).
+- [ ] **API** - Add a research questions view (`GET /api/v1/rqs`) with approve/reject/archive actions (`POST /api/v1/rqs/{rq_id}/approve|reject|archive`) and a readiness-check action (`POST /api/v1/rqs/check`).
+
+## Phase 16: Web UI — Claims and Citation Planning
+
+- [ ] **API** - Add a claims ledger view (`GET /api/v1/claims`) with an add-claim form (`POST /api/v1/claims`), status controls (`POST /api/v1/claims/{claim_id}/status`), and citation-gap (`GET /api/v1/claims/gaps`) and validation (`GET /api/v1/claims/validate`) reports.
+- [ ] **API** - Add a citation planning view: create a plan against a document target (`POST /api/v1/citations/plan`), review each proposed insertion (`POST /api/v1/citations/plan/insertion-review` — API and CLI already support this; only the web view is missing), and apply accepted insertions (`POST /api/v1/citations/apply`). This is the citation half of Phase 10's originally-scoped review-overlay work — only the cross-reference half got a web view built.
+
+## Phase 17: Web UI — Guidelines and Project Log
+
+- [ ] **API** - Add a guidelines view (`GET /api/v1/guidelines`) with a registration form (`POST /api/v1/guidelines`), default/precedence configuration (`POST /api/v1/guidelines/defaults`), and a conflict report (`GET /api/v1/guidelines/conflicts`).
+- [ ] **API** - Add a project log view combining decisions (`POST /api/v1/decisions`), terminology/glossary entries (`POST /api/v1/terminology`), supervisor/stakeholder feedback (`POST /api/v1/feedback`), and the context changelog (`POST /api/v1/context/changelog`). Note: all four routes are POST-only today with no corresponding GET/list route — a browsable project-log view needs new list routes added first, not just UI work.
+
+## Phase 18: Web UI — Document Vault and Version History
+
+- [ ] **API** - Add a document version history view per artefact/target: list versions (`GET /api/v1/doc/versions`), diff two versions (`GET /api/v1/doc/diff`), compare validation-report-derived strengths/weaknesses (`GET /api/v1/doc/compare`), and restore a version as a new copy (`POST /api/v1/doc/restore`).
+- [ ] **API** - Add a "Snapshot this document" action (`POST /api/v1/doc/version`) reachable from the artefact registry view (Phase 15).
+- [ ] **API** - Add a derived-text/anchor viewer (`POST /api/v1/doc/derive-text/{version_id}`) for inspecting paragraph/sentence anchors. Lower priority than the rest of this phase — it's mainly prep infrastructure for future AI edit sessions, not a standalone researcher-facing feature yet.
+
+## Phase 19: Web UI — Zotero Integration
+
+- [ ] **API** - Add a Zotero connection/settings view: local storage readiness (`GET /api/v1/zotero/local/collections`), Web API credential test (`GET /api/v1/zotero/api/test`), and Web API collection listing/selection (`GET`/`POST /api/v1/zotero/api/collections[/select]`).
+- [ ] **API** - Add local Zotero storage search (`GET /api/v1/zotero/local/search`) as a browsable view.
+- [ ] **API** - Add local Zotero collection selection (`researchboss zotero select-collections`/`use-entire-library`) as an API route — currently CLI-only, writing workspace config directly. The Web API variant already has `POST /api/v1/zotero/api/collections/select`; the local-storage variant has no equivalent route yet, so this needs API work before a web view is possible.
+- [ ] **Deterministic** - Add API routes (currently none) for the remaining read-only Zotero reporting commands, if/when their web views are prioritized: `metadata-report`, `attachment-health`, `fulltext-report`, `duplicates`, `snapshot`, `export-bibtex`. Lower priority than the rest of this phase — diagnostic/export tools, not core review workflow.
+
+## Phase 20: Web UI — Data Sources, Metadata, Conversion, and Workspace Admin
+
+- [ ] **API** - Add a data sources view: list (`GET /api/v1/data`), status counts (`GET /api/v1/data/status`), and a profile-trigger action (`POST /api/v1/data/profile`).
+- [ ] **API** - Add a metadata quality view: extraction (`POST /api/v1/metadata/extract`), validation (`GET /api/v1/metadata/validate`), and duplicate detection (`GET /api/v1/metadata/duplicates`) reports, plus an index-build action (`POST /api/v1/metadata/index`).
+- [ ] **API** - Add a conversion status view/action (`POST /api/v1/conversion/run`) showing which sources converted, were skipped, or failed.
+- [ ] **API** - Add a backup management view: create a backup (`POST /api/v1/backup`) and inspect an existing backup zip without restoring it (`GET /api/v1/backup/inspect`).
+- [ ] **API** - Add a SQLite index admin view: init/sync/rebuild actions (`POST /api/v1/db/init|sync|rebuild`), status (`GET /api/v1/db/status`), pending-change review (`GET /api/v1/db/pending`, `POST /api/v1/db/apply-pending`), and the privacy self-check (`GET /api/v1/db/privacy`). Lower priority than the rest of this phase — a power-user/admin surface, not a typical researcher workflow.
+
+## Phase 21: Web UI — Export and Reporting Tools
+
+- [ ] **API** - Add an evidence export action (`POST /api/v1/export/evidence`) with a download link for the resulting bundle.
+- [ ] **API** - Add an accepted-source corpus export action. No API route exists yet for `export-corpus`; needs a new `POST /api/v1/export/corpus` route before a web view is possible.
+- [ ] **Deterministic** - Add API routes (currently none) for `merge-pdfs`, `report-schemas`, `ocr-readiness`, `processing-issues`, and `watch` (unregistered-file detection), if/when their web views are prioritized. All are CLI-only today with no corresponding route.
+
+## Phase 22: Web UI — AI-Assisted Features (blocked on the AI opt-in/cost decision)
+
+Every item here mirrors an existing `--ai`-gated CLI command or a Future AI Route sketch (`docs/api/CONTRACT.md`). None of this should be built until the same AI opt-in/cost-awareness/privacy-boundary product decision already deferred elsewhere in this file (novelty assessment, AI edit sessions, AI-assisted cross-reference) is actually made — a web "send this to OpenAI" button is a bigger UX commitment to get right than the CLI's `--ai` flag, not a smaller one, since a browser user can't see the request the way a CLI user reading `--help` output can.
+
+- [ ] **AI** - AI-assisted review, corpus summary, claim-checking, citation-gap recommendations, artefact cross-reference, and source-relevance views (mirroring `researchboss ai review|corpus-summary|claim-check|citation-gaps|artefact-cross-reference|source-relevance`) — CLI/engine functions already exist; each needs both an API route (none of these are in `docs/api/CONTRACT.md` today, only the CLI reaches them) and the same per-request opt-in UX as everything else in this phase.
+- [ ] **AI** - Novelty assessment and research-question assessment views, once `POST /api/v1/ai/novelty` and the `rqs/assess` route (currently shape-sketched only in `docs/api/CONTRACT.md`'s Future AI Routes section, not implemented) actually exist.
+- [ ] **AI** - AI-assisted citation planning (`cite ai-plan`) and AI edit sessions (Phase 8's still-open item) as web views, once their respective engine/API work is done.
+
+## Phase 23: Web UI — External Search and Abstract Screening (blocked / lower priority)
+
+External search involves real API costs (Scopus) and is already gated behind explicit `--external-search`/`--ai` flags in the CLI; abstract import/screening is a less-used secondary workflow. Both are lower priority than Phases 13-21, and the AI-assisted parts are blocked on the same decision as Phase 22.
+
+- [ ] **Deterministic** - Add API routes (currently none) for deterministic external-search query planning (`search plan`), report regeneration (`search reports`), and reviewed-candidate import (`search import-candidates`), if/when this workflow is prioritized for the web UI.
+- [ ] **AI** - AI-assisted query planning and candidate relevance/novelty review (`search ai-query-plan`, `search ai-candidate-review`) — blocked on the AI opt-in decision, same as Phase 22.
+- [ ] **Deterministic** - Add an API route (currently none) for `abstracts import`, then a web view for the resulting reviewable candidate register.
+- [ ] **AI** - Abstract-screening AI recommendations (`ai abstract-screening`) as a web view, once the import route above exists and the AI opt-in decision is made.

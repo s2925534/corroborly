@@ -1,6 +1,6 @@
 # ResearchBoss
 
-Current version: 0.11.0
+Current version: 0.11.1
 
 ResearchBoss is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
