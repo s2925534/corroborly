@@ -237,13 +237,107 @@ def _read_excerpt(path: Path, max_chars: int) -> tuple[str, bool]:
     return text[:max_chars], True
 
 
+def _workspace_topic_query(workspace: Path) -> str | None:
+    """The workspace's stated research topic, used as the relevance query for
+    AI operations with no more specific query material of their own (e.g. a
+    general corpus review, as opposed to a specific research-question
+    assessment which has its own question text to use instead).
+    """
+    topic = read_yaml(workspace / "research-context.yaml").get("project", {}).get("topic")
+    return topic.strip() if isinstance(topic, str) and topic.strip() else None
+
+
+def _research_questions_query(research_questions: dict[str, Any]) -> str | None:
+    """Joined question text (all groups) to use as the relevance query for
+    novelty/RQ-assessment operations, which have research-question text
+    available as strictly more specific query material than the workspace
+    topic alone.
+    """
+    texts = [
+        str(item.get("question"))
+        for items in research_questions.values()
+        for item in items
+        if isinstance(item, dict) and item.get("question")
+    ]
+    return " ".join(texts).strip() or None
+
+
+def _source_converted_relative_path(source: dict[str, Any], workspace: Path) -> str | None:
+    conversion = source.get("conversion") if isinstance(source.get("conversion"), dict) else {}
+    output_path = conversion.get("output_path")
+    if conversion.get("status") not in {"converted", "skipped_unchanged"} or not output_path:
+        return None
+    converted_path = Path(str(output_path))
+    if not converted_path.is_file() or not converted_path.resolve().is_relative_to(workspace.resolve()):
+        return None
+    return str(converted_path.relative_to(workspace))
+
+
+def _rank_sources_by_relevance(
+    workspace: Path, sources: list[dict[str, Any]], query: str, max_sources: int
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Order `sources` by FTS5 relevance to `query`, most relevant first, with
+    sources that have no converted text or no FTS match falling back to their
+    original order at the end. Returns the reordered list (capped to
+    `max_sources`) and the `{relative_path: excerpt}` map for entries that
+    matched, so the caller can reuse the already-computed relevant excerpt
+    instead of re-deriving it.
+    """
+    from ledgerly.engine.database import relevant_source_excerpts
+
+    relevance = relevant_source_excerpts(workspace, query, limit=max_sources)
+    if not relevance:
+        return sources[:max_sources], {}
+
+    by_relative_path = {}
+    for source in sources:
+        relative = _source_converted_relative_path(source, workspace)
+        if relative:
+            by_relative_path.setdefault(relative, source)
+
+    ranked: list[dict[str, Any]] = []
+    seen_ids = set()
+    for relative in relevance:
+        source = by_relative_path.get(relative)
+        if source is None or source.get("source_id") in seen_ids:
+            continue
+        ranked.append(source)
+        seen_ids.add(source.get("source_id"))
+        if len(ranked) >= max_sources:
+            break
+    if len(ranked) < max_sources:
+        for source in sources:
+            if source.get("source_id") in seen_ids:
+                continue
+            ranked.append(source)
+            seen_ids.add(source.get("source_id"))
+            if len(ranked) >= max_sources:
+                break
+    return ranked, relevance
+
+
 def build_safe_context(
     workspace: Path,
     *,
     source_status: str = "accepted",
     max_sources: int = 10,
     max_excerpt_chars: int = 1200,
+    query: str | None = None,
 ) -> dict[str, Any]:
+    """Build the excerpt-only, original-file-excluded context every AI route sends.
+
+    When `query` is given, accepted sources are ranked and excerpted by FTS5
+    relevance (Phase 7's `fts_index_search`, keyword-relevant retrieval) via
+    `relevant_source_excerpts`, instead of an arbitrary from-the-start
+    truncation of whichever sources happen to be first in the register — both
+    an efficiency win (less irrelevant content sent per request) and a
+    grounding-precision win (the included text is actually about what the
+    request is asking, per AGENTS.md Core Rule item 6). Falls back to today's
+    from-the-start behavior per source whenever no query is given, no SQLite
+    index has been built yet (`db sync`), or a given source has no FTS match
+    — this must keep working with zero SQLite configured, since SQLite stays
+    an optional cache layer, never a hard requirement (AGENTS.md).
+    """
     if max_sources < 1:
         raise OpenAiError("max_sources must be at least 1")
     if max_excerpt_chars < 0:
@@ -251,7 +345,13 @@ def build_safe_context(
 
     register = read_yaml(workspace / "source-register.yaml")
     sources = [source for source in register.get("sources", []) if isinstance(source, dict)]
-    selected = [source for source in sources if source.get("status") == source_status][:max_sources]
+    eligible = [source for source in sources if source.get("status") == source_status]
+
+    relevant_excerpts: dict[str, str] = {}
+    if query and query.strip():
+        selected, relevant_excerpts = _rank_sources_by_relevance(workspace, eligible, query, max_sources)
+    else:
+        selected = eligible[:max_sources]
 
     entries = []
     for source in selected:
@@ -262,16 +362,21 @@ def build_safe_context(
             "excerpt_source": None,
             "excerpt": None,
             "excerpt_truncated": False,
+            "excerpt_selection": "none",
         }
-        conversion = source.get("conversion") if isinstance(source.get("conversion"), dict) else {}
-        output_path = conversion.get("output_path")
-        if conversion.get("status") in {"converted", "skipped_unchanged"} and output_path and max_excerpt_chars > 0:
-            converted_path = Path(str(output_path))
-            if converted_path.is_file() and converted_path.resolve().is_relative_to(workspace.resolve()):
-                excerpt, truncated = _read_excerpt(converted_path, max_excerpt_chars)
-                entry["excerpt_source"] = str(converted_path.relative_to(workspace))
+        if max_excerpt_chars > 0:
+            relative = _source_converted_relative_path(source, workspace)
+            if relative and relative in relevant_excerpts:
+                entry["excerpt_source"] = relative
+                entry["excerpt"] = relevant_excerpts[relative]
+                entry["excerpt_truncated"] = True
+                entry["excerpt_selection"] = "query_relevant"
+            elif relative:
+                excerpt, truncated = _read_excerpt(workspace / relative, max_excerpt_chars)
+                entry["excerpt_source"] = relative
                 entry["excerpt"] = excerpt
                 entry["excerpt_truncated"] = truncated
+                entry["excerpt_selection"] = "from_start"
         entries.append(entry)
 
     return {
@@ -290,6 +395,7 @@ def build_safe_context(
             "max_sources": max_sources,
             "max_excerpt_chars": max_excerpt_chars,
         },
+        "query": query,
         "sources": entries,
     }
 
@@ -312,7 +418,9 @@ def ai_assisted_review(
     max_excerpt_chars: int = 1200,
     opener: Callable[[Request], Any] | None = None,
 ) -> dict[str, Any]:
-    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
+    context = build_safe_context(
+        workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars, query=_workspace_topic_query(workspace)
+    )
     model = default_openai_model(workspace)
     response = openai_post(
         "responses",
@@ -370,11 +478,12 @@ def ai_novelty_assessment(
     max_excerpt_chars: int = 1200,
     opener: Callable[[Request], Any] | None = None,
 ) -> dict[str, Any]:
-    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
     research_questions = {
         "approved": read_yaml(workspace / "research-questions.yaml").get("research_questions", []),
         "candidates": read_yaml(workspace / "research-question-candidates.yaml").get("candidates", []),
     }
+    query = _research_questions_query(research_questions) or _workspace_topic_query(workspace)
+    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars, query=query)
     model = default_openai_model(workspace)
     response = openai_post(
         "responses",
@@ -455,13 +564,14 @@ def ai_research_question_assessment(
     max_excerpt_chars: int = 1200,
     opener: Callable[[Request], Any] | None = None,
 ) -> dict[str, Any]:
-    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
     research_questions = {
         "approved": read_yaml(workspace / "research-questions.yaml").get("research_questions", []),
         "candidates": read_yaml(workspace / "research-question-candidates.yaml").get("candidates", []),
     }
     selected_questions = _filter_research_questions(research_questions, rq_id)
     question_count = sum(len(items) for items in selected_questions.values())
+    query = _research_questions_query(selected_questions) or _workspace_topic_query(workspace)
+    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars, query=query)
     model = default_openai_model(workspace)
     response = openai_post(
         "responses",
@@ -568,7 +678,9 @@ def ai_workspace_report(
     if kind not in AI_WORKSPACE_REPORTS:
         allowed = ", ".join(sorted(AI_WORKSPACE_REPORTS))
         raise OpenAiError(f"Invalid AI workspace report kind: {kind}. Expected one of: {allowed}")
-    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
+    context = build_safe_context(
+        workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars, query=_workspace_topic_query(workspace)
+    )
     payload = _workspace_ai_payload(workspace, context)
     model = default_openai_model(workspace)
     response = openai_post(

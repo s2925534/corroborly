@@ -326,6 +326,49 @@ def _fts_query_terms(query: str) -> str:
     return " ".join('"' + term.replace('"', '""') + '"' for term in terms)
 
 
+def relevant_source_excerpts(
+    workspace: Path, query: str, *, doc_kind: str = "converted_source_text", limit: int = 10, max_tokens: int = 60
+) -> dict[str, str]:
+    """Best-matching excerpt per document for a query, ranked by FTS5 relevance.
+
+    Returns `{doc_id: excerpt}` for the `limit` most relevant documents of the
+    given `doc_kind`, using SQLite FTS5's `snippet()` to extract the passage
+    around the strongest match instead of an arbitrary from-the-start
+    truncation. Built for `engine.ai.build_safe_context` (AGENTS.md Core Rule
+    item 6: AI context should come from indexed/chunked excerpts wherever the
+    underlying content is long, not whole-file dumps).
+
+    Returns `{}` (not an error) if the SQLite index doesn't exist yet or the
+    query has no usable terms — callers must fall back to their own default
+    excerpt strategy in that case, never treat this as a hard requirement.
+    SQLite stays an optional cache layer per AGENTS.md; a feature that only
+    works once `db sync` has been run would silently break "the tool fully
+    works with zero AI configured [and zero SQLite set up]."
+    """
+    path = database_path(workspace)
+    if not path.exists():
+        return {}
+    fts_query = _fts_query_terms(query)
+    if not fts_query:
+        return {}
+    with _connect(path) as conn:
+        _create_schema(conn)
+        try:
+            rows = conn.execute(
+                """
+                select doc_id, snippet(fts_index_search, 3, '', '', '...', ?) as excerpt
+                from fts_index_search
+                where fts_index_search match ? and doc_kind = ?
+                order by bm25(fts_index_search)
+                limit ?
+                """,
+                (max_tokens, fts_query, doc_kind, limit),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+    return {row["doc_id"]: row["excerpt"] for row in rows}
+
+
 def search_corpus(workspace: Path, query: str, *, limit: int = 20) -> DbCommandResult:
     """Full-text keyword search across the whole corpus (converted source
     text, artefact text, guideline text, claims, accepted-source references,

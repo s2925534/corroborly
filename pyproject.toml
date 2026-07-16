@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ledgerly"
-version = "0.11.34"
+version = "0.11.35"
 description = "Local-first, evidence-first research workspace engine and CLI."
 readme = "README.md"
 requires-python = ">=3.11"

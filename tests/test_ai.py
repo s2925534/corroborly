@@ -26,6 +26,7 @@ from ledgerly.engine.ai import (
     require_full_target_document_ai_opt_in,
 )
 from ledgerly.engine.conversion import convert_sources
+from ledgerly.engine.database import sync_database
 from ledgerly.engine.sources import scan_sources, set_source_status
 from ledgerly.engine.workspace import init_workspace
 
@@ -159,7 +160,56 @@ def test_build_safe_context_uses_accepted_metadata_and_bounded_converted_excerpt
     assert source_context["full_document_excluded"] is True
     assert source_context["excerpt"] == "A" * 50
     assert source_context["excerpt_truncated"] is True
+    assert source_context["excerpt_selection"] == "from_start"
     assert str(source_file) not in str(context)
+
+
+def test_build_safe_context_uses_fts_relevant_excerpt_when_query_and_index_given(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "relevant.txt").write_text(
+        "Unrelated filler at the start of this document. " * 20
+        + "The key finding is that self-driving cranes reduce container terminal turnaround time.",
+        encoding="utf-8",
+    )
+    (source_root / "unrelated.txt").write_text("A completely unrelated document about gardening and cooking.", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    scan_sources(workspace, source_root)
+    for source in read_yaml(workspace / "source-register.yaml")["sources"]:
+        set_source_status(workspace, source_id=source["source_id"], new_status="accepted")
+    convert_sources(workspace, status="accepted")
+    sync_database(workspace)
+
+    context = build_safe_context(workspace, max_sources=1, max_excerpt_chars=50, query="self-driving cranes")
+    source_context = context["sources"][0]
+
+    assert context["query"] == "self-driving cranes"
+    assert source_context["metadata"]["file_name"] == "relevant.txt"
+    assert source_context["excerpt_selection"] == "query_relevant"
+    assert "self-driving cranes" in source_context["excerpt"]
+    # The relevant excerpt should skip the filler at the start rather than
+    # truncating from character 0, unlike the from-the-start fallback.
+    assert not source_context["excerpt"].startswith("Unrelated filler")
+
+
+def test_build_safe_context_falls_back_to_from_start_without_sqlite_index(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "paper.txt").write_text("B" * 2000, encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    scan_sources(workspace, source_root)
+    for source in read_yaml(workspace / "source-register.yaml")["sources"]:
+        set_source_status(workspace, source_id=source["source_id"], new_status="accepted")
+    convert_sources(workspace, status="accepted")
+    # Deliberately no sync_database() call — no SQLite index exists yet.
+
+    context = build_safe_context(workspace, max_sources=1, max_excerpt_chars=50, query="anything")
+
+    source_context = context["sources"][0]
+    assert source_context["excerpt_selection"] == "from_start"
+    assert source_context["excerpt"] == "B" * 50
 
 
 def test_build_safe_context_does_not_include_whole_csv_or_sqlite_files(tmp_path: Path) -> None:
