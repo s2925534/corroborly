@@ -1948,6 +1948,32 @@ def test_cli_stages_list_status_target_date_and_ics(tmp_path: Path) -> None:
     assert "DTSTART;VALUE=DATE:20260930" in ics_text
 
 
+def test_cli_digest_first_visit_then_marks_visited(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    first_result = runner.invoke(app, ["digest", "--workspace", str(workspace), "--quiet"])
+    assert first_result.exit_code == 0, first_result.output
+    settings = read_yaml(workspace / "app-settings.local.yaml")
+    assert "last_visited_at" in settings
+
+    second_result = runner.invoke(app, ["digest", "--workspace", str(workspace)])
+    assert second_result.exit_code == 0, second_result.output
+    assert "First visit" not in second_result.output
+
+
+def test_cli_digest_no_mark_visited_does_not_update_timestamp(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["digest", "--no-mark-visited", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    settings_path = workspace / "app-settings.local.yaml"
+    settings = read_yaml(settings_path) if settings_path.exists() else {}
+    assert "last_visited_at" not in settings
+
+
 def test_cli_phase4_local_review_commands(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     source_root = tmp_path / "sources"

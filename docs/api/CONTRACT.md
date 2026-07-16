@@ -1038,6 +1038,17 @@ Engine source:
 
 - `ledgerly.engine.progress_log.research_progress_report`
 
+### `GET /api/v1/reports/digest?mark_seen=true` (implemented, 2026-07-17)
+
+A proactive "what changed since you were last here" summary: new/updated claims (via the claim ledger's `created_at`/`updated_at`) and project-log activity (run summaries, decisions, terminology, feedback, context changes, via the same data `/timeline` already aggregates) since the workspace's stored `last_visited_at`, plus the current stale-open-claims count. `is_first_visit: true` (with `last_visited_at: null`) when the workspace has never been visited before. By default, computing the digest also marks the workspace visited now (`mark_seen=false` computes without updating the timestamp, a read-only peek). Honestly scoped: sources and personal notes have no timestamp field anywhere in this codebase, so new-source/new-note activity isn't reflected here.
+
+Engine source:
+
+- `ledgerly.engine.digest.since_last_visit_digest`
+- `ledgerly.engine.digest.mark_visited`
+
+CLI equivalent: `ledgerly digest [--no-mark-visited]`.
+
 ### `POST /api/v1/export/evidence` (implemented)
 
 Creates an offline evidence bundle without original source files by default.

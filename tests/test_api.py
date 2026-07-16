@@ -827,6 +827,31 @@ def test_reports_workspace_and_timeline_via_api(client: TestClient, tmp_path: Pa
     assert progress_response.json()["data"]["event_count"] == 0
 
 
+def test_reports_digest_marks_visited_by_default(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    first_response = client.get("/api/v1/reports/digest", params={"workspace": str(workspace)})
+    assert first_response.status_code == 200
+    assert first_response.json()["data"]["is_first_visit"] is True
+
+    second_response = client.get("/api/v1/reports/digest", params={"workspace": str(workspace)})
+    assert second_response.status_code == 200
+    assert second_response.json()["data"]["is_first_visit"] is False
+
+
+def test_reports_digest_mark_seen_false_does_not_update_timestamp(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get("/api/v1/reports/digest", params={"workspace": str(workspace), "mark_seen": False})
+    assert response.status_code == 200
+    assert response.json()["data"]["is_first_visit"] is True
+
+    settings = read_yaml(workspace / "app-settings.local.yaml") if (workspace / "app-settings.local.yaml").exists() else {}
+    assert "last_visited_at" not in settings
+
+
 def test_export_evidence_and_backup_create_inspect_via_api(client: TestClient, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

@@ -151,6 +151,7 @@ from ledgerly.engine.research_questions import (
     reject_research_question,
     split_candidate_relations,
 )
+from ledgerly.engine.digest import mark_visited, since_last_visit_digest
 from ledgerly.engine.progress_log import research_progress_report
 from ledgerly.engine.relationships import citation_relationship_map
 from ledgerly.engine.research_stages import (
@@ -2535,6 +2536,42 @@ def research_progress(
     for event in report["events"]:
         table.add_row(event.get("at", ""), event.get("kind", ""), event.get("entity_id", ""), event.get("detail", ""))
     console.print(table)
+
+
+@app.command("digest")
+def digest(
+    no_mark_visited: bool = typer.Option(
+        False, "--no-mark-visited", help="Show the digest without updating the last-visited timestamp (a read-only peek)."
+    ),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """What changed since you were last here: new/updated claims, project-log activity, and stale open claims."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["digest"], ws, log_level)
+    report = since_last_visit_digest(ws)
+    if not no_mark_visited:
+        mark_visited(ws)
+    logger.info(
+        "Computed since-last-visit digest",
+        operation="digest",
+        is_first_visit=report["is_first_visit"],
+        new_claim_count=report["new_claim_count"],
+        updated_claim_count=report["updated_claim_count"],
+        activity_event_count=report["activity_event_count"],
+    )
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    if report["is_first_visit"]:
+        console.print("[dim]First visit recorded -- nothing to compare against yet.[/dim]")
+    else:
+        console.print(f"Since {report['last_visited_at']}:")
+    console.print(f"  New claims: {report['new_claim_count']}")
+    console.print(f"  Updated claims: {report['updated_claim_count']}")
+    console.print(f"  Project-log activity: {report['activity_event_count']}")
+    console.print(f"  Stale open claims: {report['stale_open_claim_count']}")
 
 
 @app.command("timeline")

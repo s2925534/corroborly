@@ -109,6 +109,34 @@ async function loadWorkspace(workspace) {
   refreshTranscribeJobs();
   refreshAiUsageLog();
   refreshStages();
+  showSinceLastVisitDigest();
+}
+
+// A proactive "what changed since you were last here" banner, shown once
+// per workspace open -- complements the on-demand research-progress log
+// and stale-claims report with something surfaced automatically. Marks
+// the workspace visited as a side effect of loading it (the API's default),
+// so the next distinct visit starts a fresh window.
+async function showSinceLastVisitDigest() {
+  const panel = document.getElementById("digest-panel");
+  const summaryEl = document.getElementById("digest-summary");
+  const emptyEl = document.getElementById("digest-empty");
+  try {
+    const digest = await api("GET", "/api/v1/reports/digest");
+    if (digest.is_first_visit) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    const hasActivity =
+      digest.new_claim_count > 0 || digest.updated_claim_count > 0 || digest.activity_event_count > 0;
+    emptyEl.hidden = hasActivity;
+    summaryEl.textContent = hasActivity
+      ? `Since ${digest.last_visited_at}: ${digest.new_claim_count} new claim(s), ${digest.updated_claim_count} updated claim(s), ${digest.activity_event_count} project-log event(s). ${digest.stale_open_claim_count} open claim(s) are stale.`
+      : `${digest.stale_open_claim_count} open claim(s) are stale.`;
+  } catch (err) {
+    panel.hidden = true;
+  }
 }
 
 async function loadUploadLimits() {
