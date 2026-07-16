@@ -8,6 +8,19 @@ from ledgerly.core.yamlio import read_yaml, write_yaml
 from ledgerly.engine.progress_log import record_progress_event
 
 
+# A standard, deterministic research-methods taxonomy — not invented per-answer.
+# Each maps to a fixed question stem used to deterministically compose a
+# research question from a user's free-text "phenomenon or relationship of
+# interest" and "scope/context" answers (see `compose_research_question`).
+QUESTION_TYPES = {"descriptive", "comparative", "causal", "evaluative"}
+QUESTION_TYPE_STEMS = {
+    "descriptive": "What is",
+    "comparative": "How does",
+    "causal": "To what extent does",
+    "evaluative": "How effective is",
+}
+
+
 QUESTION_STARTERS = (
     "how",
     "why",
@@ -66,6 +79,100 @@ def list_research_questions(workspace: Path) -> dict[str, list[dict[str, Any]]]:
         "candidates": list(read_yaml(candidates_path).get("candidates", [])),
         "rejected": list(read_yaml(rejected_path).get("rejected", [])),
     }
+
+
+def compose_research_question(relation: str, scope: str, question_type: str) -> str:
+    """Deterministically assemble a research question from a fixed stem for
+    `question_type` plus the user's own "phenomenon or relationship of
+    interest" (`relation`) and "scope/context" (`scope`) answers — no AI
+    involved, so quality depends on how the user phrases their own answers,
+    same as filling in a form. Feed the result through
+    `assess_research_question_readiness` for feedback rather than trusting
+    it's well-formed by construction.
+    """
+    if question_type not in QUESTION_TYPES:
+        allowed = ", ".join(sorted(QUESTION_TYPES))
+        raise ValueError(f"Invalid question_type: {question_type!r}. Expected one of: {allowed}")
+    relation = relation.strip().rstrip("?.")
+    scope = scope.strip()
+    stem = QUESTION_TYPE_STEMS[question_type]
+    tail = f" in {scope}" if scope else ""
+    return f"{stem} {relation}{tail}?"
+
+
+def split_candidate_relations(relation_text: str) -> list[str]:
+    """Split a "phenomenon or relationship of interest" answer that implies
+    more than one distinct angle into separate phrases, so the wizard can
+    propose a small set of candidate research questions rather than forcing
+    one. Splits on commas, semicolons, and standalone " and "/" or " —
+    deliberately simple and deterministic (no AI judgment call about what
+    counts as a "distinct angle"), matching how a person would naturally
+    list several things in one sentence. Returns a single-item list
+    unchanged when there's nothing to split.
+    """
+    parts = re.split(r"\s*(?:,|;|\band\b|\bor\b)\s*", relation_text.strip())
+    parts = [part.strip() for part in parts if part.strip()]
+    return parts or [relation_text.strip()]
+
+
+def _next_rq_id(workspace: Path) -> str:
+    groups = list_research_questions(workspace)
+    numbers = []
+    for items in groups.values():
+        for item in items:
+            match = re.match(r"^rq-(\d+)$", str(item.get("id", "")))
+            if match:
+                numbers.append(int(match.group(1)))
+    return f"rq-{max(numbers, default=0) + 1:03d}"
+
+
+def add_research_question_candidate(
+    workspace: Path,
+    question: str,
+    *,
+    subquestions: list[str] | None = None,
+    hypothesis: str | None = None,
+    question_type: str | None = None,
+    proof_criteria: str | None = None,
+    disproof_criteria: str | None = None,
+) -> dict[str, Any]:
+    """Add a draft research question outside of `init_workspace` — the only
+    way to create one before this function existed. Saved through the same
+    candidates file `init_workspace` already writes to, so `rqs
+    list/check/assess/approve/reject/archive` work on it identically to an
+    init-time or manually-drafted RQ; no new storage mechanism.
+    """
+    question = question.strip()
+    if not question:
+        raise ValueError("Research question text is required.")
+    if question_type is not None and question_type not in QUESTION_TYPES:
+        allowed = ", ".join(sorted(QUESTION_TYPES))
+        raise ValueError(f"Invalid question_type: {question_type!r}. Expected one of: {allowed}")
+
+    _, candidates_path, _ = _paths(workspace)
+    candidates_doc = read_yaml(candidates_path)
+    candidates = list(candidates_doc.get("candidates", []))
+    record: dict[str, Any] = {
+        "id": _next_rq_id(workspace),
+        "question": question,
+        "subquestions": list(subquestions or []),
+        "status": "draft",
+    }
+    if hypothesis:
+        record["hypothesis"] = hypothesis.strip()
+    if question_type:
+        record["question_type"] = question_type
+    if proof_criteria:
+        record["proof_criteria"] = proof_criteria.strip()
+    if disproof_criteria:
+        record["disproof_criteria"] = disproof_criteria.strip()
+
+    candidates.append(record)
+    candidates_doc["version"] = candidates_doc.get("version", 1)
+    candidates_doc["candidates"] = candidates
+    write_yaml(candidates_path, candidates_doc)
+    record_progress_event(workspace, kind="rq_candidate_added", entity_id=record["id"], detail=question)
+    return record
 
 
 def check_research_question_readiness(

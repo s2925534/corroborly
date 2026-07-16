@@ -4,12 +4,15 @@ import pytest
 
 from ledgerly.core.yamlio import read_yaml
 from ledgerly.engine.research_questions import (
+    add_research_question_candidate,
     assess_research_question_readiness,
     check_research_question_readiness,
     approve_research_question,
     archive_research_question,
+    compose_research_question,
     list_research_questions,
     reject_research_question,
+    split_candidate_relations,
 )
 from ledgerly.engine.workspace import init_workspace
 
@@ -92,3 +95,74 @@ def test_check_research_question_readiness_rejects_unknown_id(tmp_path: Path) ->
 
     with pytest.raises(ValueError, match="Unknown research question"):
         check_research_question_readiness(workspace, rq_id="rq-999")
+
+
+def test_compose_research_question_uses_type_specific_stem() -> None:
+    assert compose_research_question("container automation reduces turnaround time", "Asian ports", "causal") == (
+        "To what extent does container automation reduces turnaround time in Asian ports?"
+    )
+    assert compose_research_question("turnaround time between automated and manual terminals", "", "comparative") == (
+        "How does turnaround time between automated and manual terminals?"
+    )
+
+
+def test_compose_research_question_rejects_invalid_type() -> None:
+    with pytest.raises(ValueError, match="Invalid question_type"):
+        compose_research_question("something", "somewhere", "speculative")
+
+
+def test_split_candidate_relations_splits_multiple_angles() -> None:
+    assert split_candidate_relations("automation, cost efficiency, and safety") == [
+        "automation",
+        "cost efficiency",
+        "safety",
+    ]
+    assert split_candidate_relations("a single unsplit phrase") == ["a single unsplit phrase"]
+
+
+def test_add_research_question_candidate_saves_through_existing_storage(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(
+        workspace,
+        project_name="Test Project",
+        project_type="PhD",
+        topic="",
+        research_questions=[{"question": "Existing draft?", "status": "draft"}],
+    )
+
+    record = add_research_question_candidate(
+        workspace,
+        "To what extent does container automation reduce turnaround time in Asian ports?",
+        hypothesis="Container automation reduces turnaround time.",
+        question_type="causal",
+        proof_criteria="Automated terminals show statistically lower turnaround times than manual ones.",
+        disproof_criteria="No significant difference or automated terminals are slower.",
+    )
+
+    assert record["id"] == "rq-002"  # rq-001 already taken by the init-time draft
+    assert record["status"] == "draft"
+    groups = list_research_questions(workspace)
+    assert groups["candidates"][-1]["id"] == "rq-002"
+    assert groups["candidates"][-1]["hypothesis"] == "Container automation reduces turnaround time."
+    assert groups["candidates"][-1]["question_type"] == "causal"
+
+    # The rest of the RQ workflow works on it unchanged, no new storage path.
+    check_research_question_readiness(workspace, rq_id="rq-002")
+    approve_research_question(workspace, "rq-002")
+    assert [item["id"] for item in list_research_questions(workspace)["approved"]] == ["rq-002"]
+
+
+def test_add_research_question_candidate_rejects_empty_text(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    with pytest.raises(ValueError, match="required"):
+        add_research_question_candidate(workspace, "   ")
+
+
+def test_add_research_question_candidate_rejects_invalid_question_type(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    with pytest.raises(ValueError, match="Invalid question_type"):
+        add_research_question_candidate(workspace, "A question?", question_type="speculative")

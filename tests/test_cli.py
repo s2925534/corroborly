@@ -1434,6 +1434,43 @@ def test_cli_rqs_workflow_commands(tmp_path: Path) -> None:
     assert read_yaml(workspace / "research-questions.yaml")["research_questions"][0]["id"] == "rq-001"
 
 
+def test_cli_rqs_wizard_proposes_multiple_candidates_and_saves_kept_ones(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="PhD", topic="")
+
+    inputs = "\n".join(
+        [
+            "Container terminal automation",  # topic
+            "Asian ports",  # scope
+            "automation, cost efficiency, and safety",  # relation (3 angles)
+            "3",  # question type -> causal
+            "Automation improves outcomes",  # hypothesis
+            "Automated terminals show statistically better metrics",  # proof
+            "No significant difference found",  # disproof
+            "y",  # keep candidate 1
+            "y",  # keep candidate 2
+            "n",  # discard candidate 3
+        ]
+    ) + "\n"
+
+    result = runner.invoke(app, ["rqs", "wizard", "--workspace", str(workspace)], input=inputs)
+
+    assert result.exit_code == 0, result.output
+    assert "Saved 2 draft research question(s): rq-001, rq-002" in result.output
+    candidates = read_yaml(workspace / "research-question-candidates.yaml")["candidates"]
+    assert [c["id"] for c in candidates] == ["rq-001", "rq-002"]
+    assert candidates[0]["question"] == "To what extent does automation in Asian ports?"
+    assert candidates[0]["hypothesis"] == "Automation improves outcomes"
+    assert candidates[0]["question_type"] == "causal"
+    assert candidates[0]["proof_criteria"] == "Automated terminals show statistically better metrics"
+    assert candidates[0]["disproof_criteria"] == "No significant difference found"
+
+    # The rest of the RQ workflow works on wizard output exactly like any other RQ.
+    approve_result = runner.invoke(app, ["rqs", "approve", "rq-001", "--workspace", str(workspace), "--quiet"])
+    assert approve_result.exit_code == 0, approve_result.output
+    assert read_yaml(workspace / "research-questions.yaml")["research_questions"][0]["id"] == "rq-001"
+
+
 def test_cli_rqs_check_writes_readiness_report(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(

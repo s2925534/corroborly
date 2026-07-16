@@ -117,11 +117,16 @@ from ledgerly.engine.project_log import (
     timeline_report,
 )
 from ledgerly.engine.research_questions import (
+    QUESTION_TYPES,
+    add_research_question_candidate,
+    assess_research_question_readiness,
     check_research_question_readiness,
     approve_research_question,
     archive_research_question,
+    compose_research_question,
     list_research_questions,
     reject_research_question,
+    split_candidate_relations,
 )
 from ledgerly.engine.progress_log import research_progress_report
 from ledgerly.engine.relationships import citation_relationship_map
@@ -3134,6 +3139,74 @@ def rqs_list(
         for row in rows:
             table.add_row(group, str(row.get("id")), str(row.get("question")))
     console.print(table)
+
+
+@rqs_app.command("wizard")
+def rqs_wizard(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+):
+    """Guided topic -> refined, falsifiable research question wizard. Usable any time, not just during init."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["rqs", "wizard"], ws, log_level)
+
+    console.print("[bold]Research question wizard[/bold]")
+    console.print("This builds one or more draft research questions from a few guided questions, entirely deterministic — no AI involved.\n")
+
+    topic = typer.prompt("What's the general topic you're researching?").strip()
+    scope = typer.prompt(
+        "Scope/context (population, setting, time period — leave blank if not applicable)", default=""
+    ).strip()
+    relation = typer.prompt(
+        "The phenomenon or relationship you're interested in (e.g. 'X reduces Y', or list several separated by commas/and)"
+    ).strip()
+    question_type = _prompt_numbered_choice(
+        "Question type",
+        ["Descriptive (what is/are...)", "Comparative (how does X differ...)", "Causal (does X affect Y...)", "Evaluative (how effective is X...)"],
+    )
+    question_type_key = {
+        "Descriptive (what is/are...)": "descriptive",
+        "Comparative (how does X differ...)": "comparative",
+        "Causal (does X affect Y...)": "causal",
+        "Evaluative (how effective is X...)": "evaluative",
+    }[question_type]
+    hypothesis = typer.prompt(
+        "What existing assumption or claim are you testing? (this becomes your hypothesis — leave blank to skip)",
+        default="",
+    ).strip()
+    proof_criteria = typer.prompt("What evidence would count as SUPPORT for that assumption?", default="").strip()
+    disproof_criteria = typer.prompt("What evidence would count as REFUTING that assumption?", default="").strip()
+
+    relations = split_candidate_relations(relation)
+    if len(relations) > 1:
+        console.print(f"\nYour answer implies {len(relations)} distinct angles — reviewing each as its own candidate question.\n")
+
+    created: list[str] = []
+    for phrase in relations:
+        question = compose_research_question(phrase, scope, question_type_key)
+        readiness = assess_research_question_readiness(question, project_type=str(read_yaml(ws / "research-context.yaml").get("project", {}).get("type", "")))
+        console.print(f"\n[bold]{question}[/bold]")
+        console.print(f"Deterministic readiness: {readiness['status']} (score {readiness['score']})")
+        for finding in readiness["findings"]:
+            console.print(f"  - [{finding['severity']}] {finding['message']}")
+        if not typer.confirm("Save this as a draft research question?", default=True):
+            continue
+        record = add_research_question_candidate(
+            ws,
+            question,
+            hypothesis=hypothesis or None,
+            question_type=question_type_key,
+            proof_criteria=proof_criteria or None,
+            disproof_criteria=disproof_criteria or None,
+        )
+        created.append(record["id"])
+
+    logger.info("Ran research question wizard", operation="rqs_wizard", topic=topic, created_count=len(created))
+    _finish(summary, summary_path, next_action="Run `ledgerly rqs check` then `ledgerly rqs approve <id>` for each you keep.")
+    if created:
+        console.print(f"\n[green]Saved {len(created)} draft research question(s):[/green] {', '.join(created)}")
+    else:
+        console.print("\n[dim]No draft research questions were saved.[/dim]")
 
 
 @rqs_app.command("approve")
