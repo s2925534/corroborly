@@ -2130,6 +2130,7 @@ async function saveZoteroCredentials() {
 
 async function unlinkZoteroCredentials() {
   const messageEl = document.getElementById("zotero-link-message");
+  if (!window.confirm("Unlink this Zotero Web API account? You'll need to re-enter the API key to reconnect.")) return;
   try {
     await api("DELETE", "/api/v1/zotero/api/credentials");
     messageEl.hidden = false;
