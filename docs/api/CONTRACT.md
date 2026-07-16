@@ -843,6 +843,49 @@ Engine source:
 
 - `ledgerly.engine.notes.import_transcript`
 
+## External Search Routes
+
+Deterministic external-search query planning, report regeneration, and reviewed-candidate import. These never call an external API themselves — they operate on local candidate registers already populated by the CLI's `search scopus`/`search scopus-test` commands (which require the explicit `--external-search` opt-in and aren't exposed as web routes). AI-assisted query planning/candidate review (`search ai-query-plan`, `search ai-candidate-review`) stay CLI-only, blocked on the same AI opt-in decision as Phase 22. Added 2026-07-16.
+
+### `POST /api/v1/search/plan` (implemented)
+
+Generates a deterministic external-search query plan from workspace context (topic, approved research questions) without calling any external API. Body: `{"max_queries": int = 20, "strategy": "broad"|"balanced"|"strict" = "balanced", "params_file": string|null = null, "unused_only": bool = false}`.
+
+Engine source:
+
+- `ledgerly.engine.external_search.generate_search_query_plan`
+- `ledgerly.engine.external_search.filter_unused_queries` (when `unused_only: true`)
+
+### `GET /api/v1/search/reports?limit=50` (implemented)
+
+Regenerates the five deterministic external-search reports (high-signal candidates, duplicates, Zotero matches, evidence validation, run comparison) from local candidate registers. `limit` caps the high-signal candidate count.
+
+Engine source:
+
+- `ledgerly.engine.external_search.write_high_signal_candidate_report`
+- `ledgerly.engine.external_search.external_candidate_deduplication_report`
+- `ledgerly.engine.external_search.external_candidate_zotero_match_report`
+- `ledgerly.engine.external_search.external_search_evidence_validation_report`
+- `ledgerly.engine.external_search.external_search_run_comparison_report`
+
+### `POST /api/v1/search/import-candidates` (implemented)
+
+Imports reviewed external candidates into the source register as metadata-only pending-review sources. Body: `{"candidate_ids": string[]}`. Returns `400 search_import_candidates_failed` if the candidate register doesn't exist yet or no IDs were given.
+
+Engine source:
+
+- `ledgerly.engine.external_search.import_external_candidates`
+
+## Abstracts Routes
+
+### `POST /api/v1/abstracts/import` (implemented)
+
+Imports local legacy Scopus-export abstract text files (`.txt`) from a server-local folder into a reviewable candidate register. Body: `{"folder": string}`. Returns `404 abstracts_folder_not_found` if the folder doesn't exist.
+
+Engine source:
+
+- `ledgerly.engine.abstracts.import_abstract_folder`
+
 ## Report And Export Routes
 
 ### `GET /api/v1/reports/workspace` (implemented)

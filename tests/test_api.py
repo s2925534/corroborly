@@ -766,6 +766,116 @@ def test_export_supervisor_bundle_via_api(client: TestClient, tmp_path: Path) ->
     assert bundle_path.name == "supervisor-bundle.zip"
 
 
+def test_search_plan_and_reports_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(
+        workspace,
+        project_name="Test",
+        project_type="PhD",
+        topic="container port evidence tracking",
+        research_questions=[{"question": "How does container tracking affect port review quality?", "status": "approved"}],
+    )
+
+    plan_response = client.post(
+        "/api/v1/search/plan",
+        params={"workspace": str(workspace)},
+        json={"max_queries": 5, "strategy": "balanced"},
+    )
+    assert plan_response.status_code == 200
+    plan_data = plan_response.json()["data"]
+    assert plan_data["external_search_performed"] is False
+    assert plan_data["queries"]
+
+    reports_response = client.get("/api/v1/search/reports", params={"workspace": str(workspace)})
+    assert reports_response.status_code == 200
+    reports_data = reports_response.json()["data"]
+    assert "high_signal" in reports_data
+    assert "duplicates" in reports_data
+    assert "comparison" in reports_data
+
+
+def test_search_import_candidates_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    candidate_path = workspace / "outputs" / "recommendations" / "external-paper-candidates.yaml"
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
+    write_yaml(
+        candidate_path,
+        {
+            "version": 1,
+            "candidates": [
+                {
+                    "candidate_id": "ext-scopus-example",
+                    "provider": "scopus",
+                    "title": "Container port evidence paper",
+                    "year": 2024,
+                }
+            ],
+            "runs": [],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/search/import-candidates",
+        params={"workspace": str(workspace)},
+        json={"candidate_ids": ["ext-scopus-example"]},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["imported_count"] == 1
+
+
+def test_search_import_candidates_requires_existing_register_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/search/import-candidates",
+        params={"workspace": str(workspace)},
+        json={"candidate_ids": ["does-not-exist"]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "search_import_candidates_failed"
+
+
+def test_abstracts_import_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    abstracts_dir = tmp_path / "legacy-abstracts"
+    abstracts_dir.mkdir()
+    (abstracts_dir / "paper-1.txt").write_text(
+        "Title: Container Port Evidence Tracking\nAuthors: Veloso, P.\nAbstract: A study of port evidence.\n",
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/api/v1/abstracts/import",
+        params={"workspace": str(workspace)},
+        json={"folder": str(abstracts_dir)},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["processed"] == 1
+    assert Path(data["register_path"]).is_file()
+
+
+def test_abstracts_import_rejects_missing_folder_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/abstracts/import",
+        params={"workspace": str(workspace)},
+        json={"folder": str(tmp_path / "does-not-exist")},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["errors"][0]["code"] == "abstracts_folder_not_found"
+
+
 def test_notes_add_list_tag_and_search_via_api(client: TestClient, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
