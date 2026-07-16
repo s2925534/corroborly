@@ -685,6 +685,13 @@ def test_reports_workspace_and_timeline_via_api(client: TestClient, tmp_path: Pa
     assert timeline_response.status_code == 200
     assert timeline_response.json()["ok"] is True
 
+    relationships_response = client.get("/api/v1/reports/citation-relationships", params={"workspace": str(workspace)})
+    assert relationships_response.status_code == 200
+    relationships_data = relationships_response.json()["data"]
+    assert relationships_data["sources"] == []
+    assert relationships_data["claims"] == []
+    assert relationships_data["artefacts"] == []
+
 
 def test_export_evidence_and_backup_create_inspect_via_api(client: TestClient, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"

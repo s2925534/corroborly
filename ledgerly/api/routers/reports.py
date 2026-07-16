@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from ledgerly.api.deps import resolve_workspace
 from ledgerly.api.envelope import ok
 from ledgerly.engine.project_log import timeline_report
+from ledgerly.engine.relationships import citation_relationship_map
 from ledgerly.engine.report_schemas import export_report_schemas
 from ledgerly.engine.reports import generate_workspace_report
 
@@ -36,3 +37,8 @@ def reports_schemas(workspace: Path = Depends(resolve_workspace)) -> dict[str, A
             "schema_count": result.schema_count,
         }
     )
+
+
+@router.get("/citation-relationships")
+def reports_citation_relationships(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    return ok(citation_relationship_map(workspace))

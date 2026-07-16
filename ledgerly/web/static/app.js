@@ -889,6 +889,37 @@ async function showStaleClaimsReport() {
   }
 }
 
+async function refreshCitationRelationships() {
+  const listEl = document.getElementById("relationships-list");
+  const emptyEl = document.getElementById("relationships-empty");
+  try {
+    const report = await api("GET", "/api/v1/reports/citation-relationships");
+    const rows = report.sources || [];
+    emptyEl.hidden = rows.length > 0;
+    listEl.innerHTML = rows
+      .map((source) => {
+        const claimItems = (source.claims || [])
+          .map((claim) => `<li>${escapeHtml(claim.text || claim.id)}</li>`)
+          .join("");
+        const artefactItems = (source.artefacts || [])
+          .map((artefact) => `<li>${escapeHtml(artefact.title || artefact.id)}</li>`)
+          .join("");
+        return `
+          <div class="rq-item">
+            <strong>${escapeHtml(source.file_name || source.source_id)}</strong>
+            ${statusBadgeHtml(source.status)}
+            ${claimItems ? `<p class="muted small">Supports claims:</p><ul>${claimItems}</ul>` : ""}
+            ${artefactItems ? `<p class="muted small">Used in artefacts:</p><ul>${artefactItems}</ul>` : ""}
+          </div>`;
+      })
+      .join("");
+  } catch (err) {
+    listEl.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
 function setupClaimsPanel() {
   document.getElementById("claim-add-btn").addEventListener("click", addClaim);
   document.getElementById("claim-gaps-btn").addEventListener("click", showClaimGapReport);
@@ -2269,6 +2300,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupRqAndArtefactPanels();
   setupClaimsPanel();
   setupCitationPanel();
+  document.getElementById("relationships-refresh-btn").addEventListener("click", refreshCitationRelationships);
   setupGuidelinesPanel();
   setupProjectLogPanel();
   setupDocVaultPanel();

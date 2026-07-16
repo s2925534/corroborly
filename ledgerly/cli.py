@@ -122,6 +122,7 @@ from ledgerly.engine.research_questions import (
     list_research_questions,
     reject_research_question,
 )
+from ledgerly.engine.relationships import citation_relationship_map
 from ledgerly.engine.report_schemas import export_report_schemas
 from ledgerly.engine.reports import generate_workspace_report
 from ledgerly.engine.sidecars import import_sidecar_metadata
@@ -2157,6 +2158,36 @@ def merge_pdfs(
         console.print(f"CSV: {result.csv_path}")
         if result.output_path:
             console.print(f"Merged PDF: {result.output_path}")
+
+
+@app.command("citation-relationships")
+def citation_relationships(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Show which sources support which claims, and which sources/research questions each artefact draws on."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["citation-relationships"], ws, log_level)
+    report = citation_relationship_map(ws)
+    logger.info(
+        "Computed citation relationship map",
+        operation="citation_relationships",
+        source_count=len(report["sources"]),
+        claim_count=len(report["claims"]),
+        artefact_count=len(report["artefacts"]),
+    )
+    _finish(summary, summary_path)
+    if quiet:
+        return
+
+    table = Table(title="Sources -> Claims / Artefacts")
+    table.add_column("Source")
+    table.add_column("Claims", justify="right")
+    table.add_column("Artefacts", justify="right")
+    for row in report["sources"]:
+        table.add_row(row.get("file_name") or row.get("source_id"), str(len(row["claims"])), str(len(row["artefacts"])))
+    console.print(table)
 
 
 @app.command("timeline")

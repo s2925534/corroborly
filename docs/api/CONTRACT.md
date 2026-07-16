@@ -853,6 +853,14 @@ Engine source:
 
 - `ledgerly.engine.report_schemas.export_report_schemas`
 
+### `GET /api/v1/reports/citation-relationships` (implemented)
+
+Local citation-relationship view: which sources support which claims, and which sources/research questions each artefact draws on. No claim-artefact edge is reported since claims don't currently link to artefacts in the data model (only sources and research questions do) — that would be a schema change, not a view change.
+
+Engine source:
+
+- `ledgerly.engine.relationships.citation_relationship_map`
+
 ### `POST /api/v1/export/evidence` (implemented)
 
 Creates an offline evidence bundle without original source files by default.
