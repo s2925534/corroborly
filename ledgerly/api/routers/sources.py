@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from ledgerly.api.deps import resolve_workspace
 from ledgerly.api.envelope import ApiError, ok
+from ledgerly.core.yamlio import read_yaml
 from ledgerly.engine.sources import (
     add_source_tag,
     list_sources,
@@ -16,9 +17,17 @@ from ledgerly.engine.sources import (
     set_source_status,
     source_review_report,
 )
+from ledgerly.engine.watch import write_watch_report
 
 
 router = APIRouter()
+
+
+@router.get("/watch")
+def sources_watch(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    """Detect unregistered files in the configured source folder without registering them."""
+    output_path = write_watch_report(workspace)
+    return ok(read_yaml(output_path))
 
 
 @router.get("")

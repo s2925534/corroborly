@@ -412,6 +412,37 @@
   </section>
 
   <section class="panel">
+    <h2>Export &amp; reporting</h2>
+
+    <div class="zotero-link-actions">
+      <button id="export-evidence-btn" type="button" class="secondary">Export evidence bundle</button>
+      <button id="export-corpus-btn" type="button" class="secondary">Export accepted-source corpus</button>
+      <button id="report-workspace-btn" type="button" class="secondary">Workspace report</button>
+      <button id="report-timeline-btn" type="button" class="secondary">Timeline report</button>
+      <button id="report-schemas-btn" type="button" class="secondary">Report schemas</button>
+      <button id="ocr-readiness-btn" type="button" class="secondary">OCR readiness</button>
+      <button id="processing-issues-btn" type="button" class="secondary">Processing issues</button>
+      <button id="watch-btn" type="button" class="secondary">Watch for unregistered files</button>
+    </div>
+    <p id="export-message" class="small" hidden></p>
+
+    <details id="merge-pdfs-details" class="detail-box">
+      <summary class="link">Merge accepted-source PDFs</summary>
+      <div class="source-scan-form">
+        <label class="field-label">
+          <input id="merge-pdfs-write-checkbox" type="checkbox"> Write the merged PDF (unchecked: manifest report only, no PDF written)
+        </label>
+        <div class="zotero-link-actions">
+          <button id="merge-pdfs-btn" type="button">Run</button>
+        </div>
+        <p id="merge-pdfs-message" class="small" hidden></p>
+      </div>
+    </details>
+
+    <div id="report-result"></div>
+  </section>
+
+  <section class="panel">
     <h2>Zotero</h2>
     <p class="muted small">Link your Zotero account and browse your library here for quick reference — read-only, nothing is ever written back to Zotero.</p>
 

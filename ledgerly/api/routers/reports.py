@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from ledgerly.api.deps import resolve_workspace
 from ledgerly.api.envelope import ok
 from ledgerly.engine.project_log import timeline_report
+from ledgerly.engine.report_schemas import export_report_schemas
 from ledgerly.engine.reports import generate_workspace_report
 
 
@@ -23,3 +24,15 @@ def reports_workspace(workspace: Path = Depends(resolve_workspace)) -> dict[str,
 @router.get("/timeline")
 def reports_timeline(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
     return ok(timeline_report(workspace))
+
+
+@router.get("/schemas")
+def reports_schemas(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    result = export_report_schemas(workspace)
+    return ok(
+        {
+            "yaml_path": str(result.yaml_path),
+            "markdown_path": str(result.markdown_path),
+            "schema_count": result.schema_count,
+        }
+    )

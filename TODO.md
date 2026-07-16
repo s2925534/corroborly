@@ -298,7 +298,7 @@ Phase 10 shipped a single upload-focused page. Everything below this point is a 
 - [ ] **API** - Add a persistent navigation shell (sidebar or tabs) to `ledgerly/web/` replacing the current single-view layout, so each feature area can be its own page/section instead of an ever-longer stack of panels on one page.
 - [ ] **API** - Add a "Create workspace" view calling `POST /api/v1/projects/init`, so a new workspace can be created from the browser instead of only via `ledgerly init`'s interactive CLI wizard.
 - [x] **Done** - **API** - Add a workspace dashboard view showing `GET /api/v1/projects/status` and `GET /api/v1/projects/health` output (source counts as stat tiles, health status pill with a missing-files/failed-conversions/unsupported-files detail line when not "ok") as the first panel on the page after loading a workspace.
-- [ ] **API** - Add a workspace report view rendering `GET /api/v1/reports/workspace` and `GET /api/v1/reports/timeline` output.
+- [x] **Done** - **API** - Add a workspace report view rendering `GET /api/v1/reports/workspace` (rendered markdown) and `GET /api/v1/reports/timeline` (event list) output. Landed as part of Phase 21's Export & Reporting panel rather than a separate view, since both are one-shot report buttons that fit naturally alongside export actions.
 - [x] **Done** - **Deterministic** - Persist the last-used workspace path in browser `localStorage` (not server-side session state — every API route already takes an explicit `workspace` param, and that shouldn't change) so returning to `/` doesn't require re-typing the path every time. The `?workspace=` URL param still wins when present (bookmarks/shared links keep working), localStorage is only the fallback.
 
 ## Phase 14: Web UI — Source Management
@@ -353,9 +353,9 @@ The source inbox/review workflow (`sources accept/maybe/ignore/note/tag`) is one
 
 ## Phase 21: Web UI — Export and Reporting Tools
 
-- [ ] **API** - Add an evidence export action (`POST /api/v1/export/evidence`) with a download link for the resulting bundle.
-- [ ] **API** - Add an accepted-source corpus export action. No API route exists yet for `export-corpus`; needs a new `POST /api/v1/export/corpus` route before a web view is possible.
-- [ ] **Deterministic** - Add API routes (currently none) for `merge-pdfs`, `report-schemas`, `ocr-readiness`, `processing-issues`, and `watch` (unregistered-file detection), if/when their web views are prioritized. All are CLI-only today with no corresponding route.
+- [x] **Done** - **API** - Add an evidence export action (`POST /api/v1/export/evidence`) showing the resulting bundle path — no download-serving route, same pattern as backup creation (Phase 20), which also just surfaces the on-disk path rather than streaming the file through the browser.
+- [x] **Done** - **API** - Add an accepted-source corpus export action. Added the new `POST /api/v1/export/corpus` route (didn't exist before) and its web view together.
+- [x] **Done** - **Deterministic** - Add API routes for `merge-pdfs` (`POST /api/v1/export/merge-pdfs`, with a `write` flag matching the CLI's `--write`), `report-schemas` (`GET /api/v1/reports/schemas`), `ocr-readiness` (`GET /api/v1/conversion/ocr-readiness`), `processing-issues` (`GET /api/v1/conversion/processing-issues`), and `watch` (`GET /api/v1/sources/watch`) — all previously CLI-only. Routed to whichever existing router each fit best rather than a new one-off router. All five now have web views (buttons showing inline summaries) in the Export & Reporting panel. 4 new tests, verified live.
 
 ## Phase 22: Web UI — AI-Assisted Features (blocked on the AI opt-in/cost decision)
 

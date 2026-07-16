@@ -610,6 +610,66 @@ def test_export_evidence_and_backup_create_inspect_via_api(client: TestClient, t
     assert inspect_response.json()["data"]["contains_original_sources"] is False
 
 
+def test_export_corpus_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post("/api/v1/export/corpus", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert Path(data["manifest_path"]).is_file()
+    assert data["included_count"] == 0
+    assert data["skipped_count"] == 0
+
+
+def test_export_merge_pdfs_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post("/api/v1/export/merge-pdfs", params={"workspace": str(workspace)}, json={})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["dry_run"] is True
+    assert Path(data["manifest_path"]).is_file()
+
+
+def test_conversion_ocr_readiness_and_processing_issues_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    ocr_response = client.get("/api/v1/conversion/ocr-readiness", params={"workspace": str(workspace)})
+    assert ocr_response.status_code == 200
+    assert "ocr_supported_locally" in ocr_response.json()["data"]
+
+    issues_response = client.get("/api/v1/conversion/processing-issues", params={"workspace": str(workspace)})
+    assert issues_response.status_code == 200
+    assert issues_response.json()["data"]["issue_count"] == 0
+
+
+def test_sources_watch_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get("/api/v1/sources/watch", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert "candidate_count" in response.json()["data"]
+
+
+def test_reports_schemas_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get("/api/v1/reports/schemas", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert Path(data["yaml_path"]).is_file()
+    assert data["schema_count"] > 0
+
+
 def test_backup_inspect_unknown_path_returns_404(client: TestClient, tmp_path: Path) -> None:
     response = client.get("/api/v1/backup/inspect", params={"backup_path": str(tmp_path / "missing.zip")})
 

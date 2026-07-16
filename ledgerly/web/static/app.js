@@ -1509,6 +1509,156 @@ function setupDbAdminPanel() {
   document.getElementById("db-privacy-btn").addEventListener("click", () => runDbAction("Privacy check", "GET", "/api/v1/db/privacy"));
 }
 
+// --- export & reporting ---
+
+async function exportEvidence() {
+  const messageEl = document.getElementById("export-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Exporting...";
+  try {
+    const result = await api("POST", "/api/v1/export/evidence", { json: {} });
+    messageEl.textContent = `Evidence bundle written: ${result.bundle_path}`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function exportCorpus() {
+  const messageEl = document.getElementById("export-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Exporting...";
+  try {
+    const result = await api("POST", "/api/v1/export/corpus", { json: {} });
+    messageEl.textContent = `Corpus written: ${result.corpus_path} (${result.included_count} included, ${result.skipped_count} skipped).`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function showWorkspaceReport() {
+  const resultEl = document.getElementById("report-result");
+  resultEl.innerHTML = `<p class="muted small">Loading...</p>`;
+  try {
+    const report = await api("GET", "/api/v1/reports/workspace");
+    resultEl.innerHTML = `<pre class="code-block"></pre>`;
+    resultEl.querySelector("pre").textContent = report.markdown;
+  } catch (err) {
+    resultEl.innerHTML = `<p class="error small">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function showTimelineReport() {
+  const resultEl = document.getElementById("report-result");
+  resultEl.innerHTML = `<p class="muted small">Loading...</p>`;
+  try {
+    const report = await api("GET", "/api/v1/reports/timeline");
+    if (!report.events.length) {
+      resultEl.innerHTML = `<p class="muted small">No timeline events yet.</p>`;
+      return;
+    }
+    const rows = report.events
+      .map(
+        (event) =>
+          `<div class="rq-row"><span class="candidate-status">${escapeHtml(event.kind || "")}</span> ${escapeHtml(
+            event.id || event.command || event.path || ""
+          )}${event.status ? ` — ${escapeHtml(event.status)}` : ""}</div>`
+      )
+      .join("");
+    resultEl.innerHTML = `<div class="rq-list">${rows}</div>`;
+  } catch (err) {
+    resultEl.innerHTML = `<p class="error small">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function showReportSchemas() {
+  const messageEl = document.getElementById("export-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Generating...";
+  try {
+    const result = await api("GET", "/api/v1/reports/schemas");
+    messageEl.textContent = `${result.schema_count} report schema(s) written to ${result.markdown_path}.`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function showOcrReadiness() {
+  const messageEl = document.getElementById("export-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Checking...";
+  try {
+    const report = await api("GET", "/api/v1/conversion/ocr-readiness");
+    messageEl.textContent = `OCR supported locally: ${report.ocr_supported_locally}.`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function showProcessingIssues() {
+  const messageEl = document.getElementById("export-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Checking...";
+  try {
+    const report = await api("GET", "/api/v1/conversion/processing-issues");
+    messageEl.textContent = `${report.issue_count} processing issue(s).`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function runWatch() {
+  const messageEl = document.getElementById("export-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Watching...";
+  try {
+    const report = await api("GET", "/api/v1/sources/watch");
+    messageEl.textContent = `${report.candidate_count || 0} unregistered candidate file(s) found. Use "Scan a folder" in Sources to register them.`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function runMergePdfs() {
+  const messageEl = document.getElementById("merge-pdfs-message");
+  const write = document.getElementById("merge-pdfs-write-checkbox").checked;
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Running...";
+  try {
+    const result = await api("POST", "/api/v1/export/merge-pdfs", { json: { write } });
+    messageEl.textContent =
+      `Included ${result.included}, skipped ${result.skipped}, failed ${result.failed}.` +
+      (result.output_path ? ` PDF: ${result.output_path}.` : " (manifest only, no PDF written.)");
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function setupExportPanel() {
+  document.getElementById("export-evidence-btn").addEventListener("click", exportEvidence);
+  document.getElementById("export-corpus-btn").addEventListener("click", exportCorpus);
+  document.getElementById("report-workspace-btn").addEventListener("click", showWorkspaceReport);
+  document.getElementById("report-timeline-btn").addEventListener("click", showTimelineReport);
+  document.getElementById("report-schemas-btn").addEventListener("click", showReportSchemas);
+  document.getElementById("ocr-readiness-btn").addEventListener("click", showOcrReadiness);
+  document.getElementById("processing-issues-btn").addEventListener("click", showProcessingIssues);
+  document.getElementById("watch-btn").addEventListener("click", runWatch);
+  document.getElementById("merge-pdfs-btn").addEventListener("click", runMergePdfs);
+}
+
 // --- localStorage: remember the last-used workspace path ---
 
 const LAST_WORKSPACE_KEY = "ledgerly:lastWorkspace";
@@ -1733,6 +1883,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupConversionPanel();
   setupBackupPanel();
   setupDbAdminPanel();
+  setupExportPanel();
 
   const workspaceInput = document.getElementById("workspace-input");
   // Prefer an explicit ?workspace= URL param (e.g. from a bookmark or a

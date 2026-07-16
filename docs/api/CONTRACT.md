@@ -177,6 +177,14 @@ Engine source:
 
 - `ledgerly.engine.sources.source_review_report`
 
+### `GET /api/v1/sources/watch` (implemented)
+
+Detects unregistered files in the configured source folder without registering them — run `POST /api/v1/sources/scan` afterwards to register any candidates found.
+
+Engine source:
+
+- `ledgerly.engine.watch.write_watch_report`
+
 ## Conversion And Metadata Routes
 
 ### `POST /api/v1/conversion/run` (implemented)
@@ -186,6 +194,22 @@ Converts registered sources to local text.
 Engine source:
 
 - `ledgerly.engine.conversion.convert_sources`
+
+### `GET /api/v1/conversion/ocr-readiness` (implemented)
+
+Checks local OCR tool (`tesseract`/`pdftoppm`) availability without processing any document.
+
+Engine source:
+
+- `ledgerly.engine.conversion.ocr_readiness_report`
+
+### `GET /api/v1/conversion/processing-issues` (implemented)
+
+Returns skipped/failed conversion issues without modifying original files.
+
+Engine source:
+
+- `ledgerly.engine.conversion.processing_issue_report`
 
 ### `POST /api/v1/metadata/extract` (implemented)
 
@@ -697,6 +721,14 @@ Engine source:
 
 - `ledgerly.engine.project_log.timeline_report`
 
+### `GET /api/v1/reports/schemas` (implemented)
+
+Writes report schema and human-review guideline documentation (YAML + Markdown).
+
+Engine source:
+
+- `ledgerly.engine.report_schemas.export_report_schemas`
+
 ### `POST /api/v1/export/evidence` (implemented)
 
 Creates an offline evidence bundle without original source files by default.
@@ -704,6 +736,22 @@ Creates an offline evidence bundle without original source files by default.
 Engine source:
 
 - `ledgerly.engine.export.export_evidence_bundle`
+
+### `POST /api/v1/export/corpus` (implemented)
+
+Exports accepted converted source text as a combined local corpus with a manifest.
+
+Engine source:
+
+- `ledgerly.engine.export.export_accepted_source_corpus`
+
+### `POST /api/v1/export/merge-pdfs` (implemented)
+
+Creates accepted-source PDF merge manifests and, when `write: true` is passed (mirroring the CLI's `--write` flag), a merged PDF artefact. Defaults to `write: false` (manifest reports only, no PDF written).
+
+Engine source:
+
+- `ledgerly.engine.pdf_merge.pdf_merge_report`
 
 ### `POST /api/v1/backup` (implemented)
 

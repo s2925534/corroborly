@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ledgerly.api.deps import resolve_workspace
 from ledgerly.api.envelope import ApiError, ok
-from ledgerly.engine.conversion import convert_sources
+from ledgerly.engine.conversion import convert_sources, ocr_readiness_report, processing_issue_report
 
 
 router = APIRouter()
@@ -42,3 +42,13 @@ def conversion_run(payload: ConversionRunRequest, workspace: Path = Depends(reso
             ],
         }
     )
+
+
+@router.get("/ocr-readiness")
+def conversion_ocr_readiness(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    return ok(ocr_readiness_report(workspace))
+
+
+@router.get("/processing-issues")
+def conversion_processing_issues(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    return ok(processing_issue_report(workspace))
