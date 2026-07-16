@@ -418,7 +418,7 @@ A curated list of generically valuable features for any researcher using this to
 - [ ] **Deterministic** - Lightweight local research-progress log (research question / artefact activity over time) — an honest local record useful for a progress report, not a gamified streak feature.
 - [ ] **Deterministic** - Multi-workspace comparison view for anyone running more than one research project at once (source counts, claim coverage, etc. side by side).
 - [ ] **Deterministic** - Documented keyboard shortcuts for common web UI actions (upload, search, accept/ignore a source), listed in the About modal.
-- [ ] **Deterministic** - A "claims/citation gaps not touched in N days" report as an always-available, non-AI first version of proactively resurfacing stale work — worth having even before any AI-assisted version.
+- [x] **Deterministic** - A "claims/citation gaps not touched in N days" report as an always-available, non-AI first version of proactively resurfacing stale work — worth having even before any AI-assisted version.
 - [ ] **Deterministic** - A short design note exploring whether any two-way Zotero sync could ever be done safely, without changing today's deliberate one-way/read-only rule (AGENTS.md) — so the idea is tracked rather than silently dropped, not a commitment to build it.
 
 ## Phase 27: AI Output Grounding and Anti-Hallucination Enforcement (foundational — gates Phases 5, 22, 23, 25)

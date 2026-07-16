@@ -452,6 +452,12 @@ def test_claims_add_status_gaps_and_validate_via_api(client: TestClient, tmp_pat
     assert validate_response.status_code == 200
     assert validate_response.json()["data"]["claims"][0]["issues"][0]["kind"] == "missing_source"
 
+    stale_response = client.get("/api/v1/claims/stale", params={"workspace": str(workspace)})
+    assert stale_response.status_code == 200
+    stale_data = stale_response.json()["data"]
+    assert stale_data["days_threshold"] == 14
+    assert stale_data["stale_count"] == 0
+
 
 def test_claims_status_unknown_id_returns_404(client: TestClient, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"

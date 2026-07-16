@@ -353,6 +353,14 @@ Engine source:
 
 - `ledgerly.engine.claims.claim_source_validation_report`
 
+### `GET /api/v1/claims/stale?days=14` (implemented)
+
+Returns open claims (`active`/`needs_evidence`/`needs_review`) not updated in at least `days` days, each flagged with `age_days` and whether it's also a citation gap (`is_citation_gap`). Claims from before `created_at`/`updated_at` tracking existed have no confirmed age and are always included rather than assumed fresh.
+
+Engine source:
+
+- `ledgerly.engine.claims.write_stale_claims_report`
+
 ## Artefact Routes
 
 ### `GET /api/v1/artefacts` (implemented)

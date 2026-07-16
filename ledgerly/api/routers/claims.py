@@ -15,6 +15,7 @@ from ledgerly.engine.claims import (
     list_claims,
     set_claim_status,
     write_citation_gap_report,
+    write_stale_claims_report,
 )
 
 
@@ -70,3 +71,9 @@ def claims_gaps(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
 @router.get("/validate")
 def claims_validate(workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
     return ok(claim_source_validation_report(workspace))
+
+
+@router.get("/stale")
+def claims_stale(days: int = 14, workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    report_path = write_stale_claims_report(workspace, days=days)
+    return ok(read_yaml(report_path))

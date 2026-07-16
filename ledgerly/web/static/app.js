@@ -865,10 +865,25 @@ async function showClaimValidationReport() {
   }
 }
 
+async function showStaleClaimsReport() {
+  const messageEl = document.getElementById("claim-report-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Checking...";
+  try {
+    const report = await api("GET", "/api/v1/claims/stale");
+    messageEl.textContent = `${report.stale_count} open claim(s) not touched in ${report.days_threshold}+ days (${report.citation_gap_count} of those also have a citation gap).`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
 function setupClaimsPanel() {
   document.getElementById("claim-add-btn").addEventListener("click", addClaim);
   document.getElementById("claim-gaps-btn").addEventListener("click", showClaimGapReport);
   document.getElementById("claim-validate-btn").addEventListener("click", showClaimValidationReport);
+  document.getElementById("claim-stale-btn").addEventListener("click", showStaleClaimsReport);
 }
 
 // --- citation planning ---

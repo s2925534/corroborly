@@ -39,6 +39,7 @@ from ledgerly.engine.claims import (
     list_claims,
     set_claim_status,
     write_citation_gap_report,
+    write_stale_claims_report,
 )
 from ledgerly.engine.conversion import convert_sources, extract_text, ocr_readiness_report, processing_issue_report
 from ledgerly.engine.citations import apply_citation_plan, create_citation_plan, set_citation_plan_insertion_review_status
@@ -3278,6 +3279,23 @@ def claims_gaps(
     _slug, logger, summary, summary_path, _log_path = _run_ctx(["claims", "gaps"], ws, log_level)
     output_path = write_citation_gap_report(ws)
     logger.info("Wrote citation gap report", operation="claims_gaps", output_path=str(output_path))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Wrote[/green] {output_path}")
+
+
+@claims_app.command("stale")
+def claims_stale(
+    days: int = typer.Option(14, "--days", help="Flag open claims not touched in at least this many days."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Write a local report of open claims (and citation gaps among them) not touched recently."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["claims", "stale"], ws, log_level)
+    output_path = write_stale_claims_report(ws, days=days)
+    logger.info("Wrote stale claims report", operation="claims_stale", output_path=str(output_path), days=days)
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
