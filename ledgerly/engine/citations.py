@@ -11,6 +11,7 @@ from ledgerly.core.yamlio import read_yaml, write_yaml
 from ledgerly.engine.conversion import extract_text
 from ledgerly.engine.doc_validation import validate_document
 from ledgerly.engine.document_targets import resolve_document_target
+from ledgerly.engine.references import CITATION_STYLES, format_inline_citation, format_reference
 from ledgerly.engine.vault import create_document_version
 
 
@@ -44,8 +45,13 @@ def create_citation_plan(
     guideline_ids: list[str] | None = None,
     use_default_guidelines: bool = True,
     allow_candidate_citations: bool = False,
+    citation_style: str = "apa7",
     cwd: Path | None = None,
 ) -> CitationPlanRun:
+    if citation_style not in CITATION_STYLES:
+        raise ValueError(
+            f"Unknown citation style: {citation_style}. Expected one of: {', '.join(sorted(CITATION_STYLES))}"
+        )
     validation = validate_document(
         workspace,
         target,
@@ -60,6 +66,12 @@ def create_citation_plan(
         str(item.get("source_id")): item.get("confidence_score", {})
         for item in report.get("evidence_confidence", [])
     }
+    references = report.get("references", {})
+    number_map = (
+        _assign_citation_numbers(report.get("missing_citations", []), references)
+        if citation_style == "ieee"
+        else {}
+    )
     insertions = []
     blocked_candidate_citations = []
     for item in report.get("missing_citations", []):
@@ -83,7 +95,9 @@ def create_citation_plan(
                 "sentence_index": item.get("sentence_index"),
                 "target_sentence": item.get("text"),
                 "source_id": source_id,
-                "suggested_inline_citation": _inline_citation(source),
+                "suggested_inline_citation": format_inline_citation(
+                    source, citation_style, number=number_map.get(str(source_id))
+                ),
                 "citation_position": "end_of_sentence_before_final_punctuation",
                 "support_status": item.get("support_status"),
                 "confidence_score": confidence_map.get(str(source_id), {}).get("score"),
@@ -99,15 +113,21 @@ def create_citation_plan(
         "original_document_modified": False,
         "plan_status": "review_required",
         "allow_candidate_citations": allow_candidate_citations,
+        "citation_style": citation_style,
         "insertions": insertions,
         "blocked_candidate_citations": blocked_candidate_citations,
-        "references": report.get("references", {}),
+        "references": _styled_references(references, citation_style, number_map),
         "guidelines": report.get("guidelines", []),
         "limitations": [
             "This is a deterministic citation insertion plan only.",
             "It does not edit the original document.",
             "Human review is required before applying any citation.",
-        ],
+        ]
+        + (
+            ["Non-APA reference formatting is a simplified approximation -- verify against your institution's exact style guide before submission."]
+            if citation_style != "apa7"
+            else []
+        ),
     }
     yaml_path = _plan_path(workspace, Path(str(report["target"]["path"])), ".yaml")
     markdown_path = _plan_path(workspace, Path(str(report["target"]["path"])), ".md")
@@ -349,10 +369,55 @@ def _replace_docx_paragraph_text(paragraph: ElementTree.Element, text: str) -> N
         text_node.text = ""
 
 
-def _inline_citation(source: dict[str, Any]) -> str:
-    author = _first_author(source.get("authors"))
-    year = source.get("year") if source.get("year") not in (None, "", "Unknown") else "n.d."
-    return f"({author}, {year})"
+def _assign_citation_numbers(
+    missing_citations: list[dict[str, Any]], references: dict[str, Any]
+) -> dict[str, int]:
+    """IEEE-style running numbers, assigned by order of first appearance:
+    sources actually cited inline first (in the order sentences reference
+    them), then any remaining accepted sources that only appear in the
+    reference list. Stable per plan generation, not a global source ID.
+    """
+    numbers: dict[str, int] = {}
+    next_number = 1
+    for item in missing_citations:
+        source_id = str(item.get("best_source_id"))
+        if source_id and source_id not in numbers:
+            numbers[source_id] = next_number
+            next_number += 1
+    accepted = references.get("accepted_workspace_evidence") if isinstance(references, dict) else []
+    for row in accepted or []:
+        source_id = str(row.get("source_id"))
+        if source_id and source_id not in numbers:
+            numbers[source_id] = next_number
+            next_number += 1
+    return numbers
+
+
+def _styled_references(
+    references: dict[str, Any], style: str, number_map: dict[str, int]
+) -> dict[str, Any]:
+    """Reformat `doc_validation`'s always-APA reference rows into the
+    requested citation style, using the raw metadata each row already
+    carries (`doc_validation._references`). Left untouched for the default
+    `apa7` style, so existing plans/tests see byte-identical output.
+    """
+    if style == "apa7":
+        return references
+    styled: dict[str, list[dict[str, Any]]] = {}
+    for key in ("accepted_workspace_evidence", "candidate_or_explicit_sources"):
+        rows = references.get(key) if isinstance(references, dict) else []
+        styled_rows = []
+        for row in rows or []:
+            metadata = row.get("metadata") if isinstance(row, dict) else None
+            if not isinstance(metadata, dict):
+                styled_rows.append(row)
+                continue
+            source_id = str(row.get("source_id"))
+            styled_rows.append(
+                {**row, "reference": format_reference(metadata, style, number=number_map.get(source_id))}
+            )
+        styled[key] = styled_rows
+    return styled
 
 
 def _insert_citation(sentence: str, citation: str) -> str:
@@ -371,18 +436,6 @@ def _append_references(text: str, references: dict[str, Any]) -> str:
         return text
     base = text.rstrip()
     return base + "\n\n## References\n\n" + "\n".join(f"- {line}" for line in lines) + "\n"
-
-
-def _first_author(value: Any) -> str:
-    if value in (None, "", [], "Unknown"):
-        return "Unknown author"
-    if isinstance(value, list):
-        value = value[0] if value else "Unknown author"
-    text = str(value)
-    if "," in text:
-        return text.split(",", 1)[0].strip() or "Unknown author"
-    parts = re.split(r"\s+", text.strip())
-    return parts[-1] if parts else "Unknown author"
 
 
 def _plan_path(workspace: Path, target_path: Path, suffix: str) -> Path:
@@ -408,6 +461,7 @@ def _markdown_plan(plan: dict[str, Any]) -> str:
         "- AI used: No",
         "- Original document modified: No",
         "- Plan status: review required",
+        f"- Citation style: {plan.get('citation_style', 'apa7')}",
         "",
         "## Proposed Insertions",
         "",

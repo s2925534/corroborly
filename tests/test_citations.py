@@ -54,6 +54,68 @@ def test_create_citation_plan_writes_reviewable_plan_without_editing_target(tmp_
     assert plan["insertions"][0]["review_status"] == "needs_human_review"
 
 
+def test_create_citation_plan_rejects_unknown_citation_style(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    target.write_text("Some text.", encoding="utf-8")
+    with pytest.raises(ValueError, match="Unknown citation style"):
+        create_citation_plan(workspace, str(target), citation_style="harvard")
+
+
+def test_create_citation_plan_mla_style(tmp_path: Path) -> None:
+    workspace, target = _citation_plan_fixture(tmp_path)
+    result = create_citation_plan(workspace, str(target), citation_style="mla")
+    plan = read_yaml(result.yaml_path)
+    assert plan["citation_style"] == "mla"
+    # MLA in-text omits the year (this project doesn't track page numbers).
+    assert plan["insertions"][0]["suggested_inline_citation"] == "(Smith)"
+    reference = plan["references"]["accepted_workspace_evidence"][0]["reference"]
+    assert reference.startswith('Smith, A.. "Accepted Source."')
+    assert "2024" in reference
+
+
+def test_create_citation_plan_chicago_style(tmp_path: Path) -> None:
+    workspace, target = _citation_plan_fixture(tmp_path)
+    result = create_citation_plan(workspace, str(target), citation_style="chicago")
+    plan = read_yaml(result.yaml_path)
+    assert plan["citation_style"] == "chicago"
+    assert plan["insertions"][0]["suggested_inline_citation"] == "(Smith 2024)"
+    reference = plan["references"]["accepted_workspace_evidence"][0]["reference"]
+    assert reference.startswith('Smith, A.. 2024. "Accepted Source."')
+
+
+def test_create_citation_plan_ieee_style_numbers_by_first_appearance(tmp_path: Path) -> None:
+    workspace, target = _citation_plan_fixture(tmp_path)
+    result = create_citation_plan(workspace, str(target), citation_style="ieee")
+    plan = read_yaml(result.yaml_path)
+    assert plan["citation_style"] == "ieee"
+    assert plan["insertions"][0]["suggested_inline_citation"] == "[1]"
+    reference = plan["references"]["accepted_workspace_evidence"][0]["reference"]
+    assert reference.startswith("[1] Smith, A., ")
+
+
+def test_create_citation_plan_default_apa_style_unchanged(tmp_path: Path) -> None:
+    workspace, target = _citation_plan_fixture(tmp_path)
+    result = create_citation_plan(workspace, str(target))
+    plan = read_yaml(result.yaml_path)
+    assert plan["citation_style"] == "apa7"
+    assert plan["insertions"][0]["suggested_inline_citation"] == "(Smith, 2024)"
+
+
+def test_apply_citation_plan_uses_the_requested_style_in_appended_references(tmp_path: Path) -> None:
+    workspace, target = _citation_plan_fixture(tmp_path)
+    plan = create_citation_plan(workspace, str(target), citation_style="ieee")
+    insertion = plan.plan["insertions"][0]
+    set_citation_plan_insertion_review_status(
+        workspace, str(target), insertion["sentence_index"], insertion["source_id"], "accepted"
+    )
+    result = apply_citation_plan(workspace, str(target))
+    revised_text = result.output_path.read_text(encoding="utf-8")
+    assert "[1]" in revised_text
+    assert "## References" in revised_text
+
+
 def _citation_plan_fixture(tmp_path: Path):
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")

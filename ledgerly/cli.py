@@ -867,6 +867,11 @@ def cite_plan(
         "--allow-candidate-citations",
         help="Allow citation suggestions from explicit or not-yet-accepted sources.",
     ),
+    citation_style: str = typer.Option(
+        "apa7",
+        "--citation-style",
+        help="Reference/inline citation style: apa7 (default), mla, chicago, or ieee.",
+    ),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
 ):
@@ -882,6 +887,7 @@ def cite_plan(
             guideline_ids=guideline_ids,
             use_default_guidelines=not no_default_guidelines,
             allow_candidate_citations=allow_candidate_citations,
+            citation_style=citation_style,
             cwd=Path.cwd(),
         )
         logger.info(
@@ -925,6 +931,11 @@ def cite_ai_plan(
         "--allow-candidate-citations",
         help="Allow citation suggestions from explicit or not-yet-accepted sources.",
     ),
+    citation_style: str = typer.Option(
+        "apa7",
+        "--citation-style",
+        help="Reference/inline citation style: apa7 (default), mla, chicago, or ieee.",
+    ),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
 ):
@@ -938,6 +949,7 @@ def cite_ai_plan(
             target,
             source_paths=source_path,
             allow_candidate_citations=allow_candidate_citations,
+            citation_style=citation_style,
             cwd=Path.cwd(),
         )
         target_path = Path(str(deterministic.plan["target"]["path"]))

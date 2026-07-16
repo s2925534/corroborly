@@ -675,6 +675,8 @@ Engine source:
 
 Creates a reviewable, non-destructive citation insertion plan from a validation run's missing-citation findings. Only suggests citations from `accepted` sources unless `allow_candidate_citations` is set.
 
+Request body accepts an optional `citation_style` (`"apa7"` default, or `"mla"`/`"chicago"`/`"ieee"`, added 2026-07-17) controlling both the plan's `suggested_inline_citation` markers and its `references` reference-list formatting. `400 invalid_citation_style` for any other value. `apa7` output is byte-identical to before this field existed; the other three styles are deliberately simplified, common approximations (`ledgerly.engine.references`), not full style-guide-compliant implementations — the plan's `limitations` list says so explicitly for any non-`apa7` style, matching this project's practice of never presenting output as more authoritative than it is. `ieee` assigns running reference numbers (`[1]`, `[2]`, ...) by order of first appearance in the document, stable per plan generation.
+
 Engine source:
 
 - `ledgerly.engine.citations.create_citation_plan`

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ledgerly.api.deps import resolve_workspace
 from ledgerly.api.envelope import ApiError, ok
 from ledgerly.engine.citations import apply_citation_plan, create_citation_plan, set_citation_plan_insertion_review_status
+from ledgerly.engine.references import CITATION_STYLES
 
 
 router = APIRouter()
@@ -20,10 +21,16 @@ class CitationPlanRequest(BaseModel):
     guideline_ids: list[str] = []
     use_default_guidelines: bool = True
     allow_candidate_citations: bool = False
+    citation_style: str = "apa7"
 
 
 @router.post("/plan")
 def citations_plan(payload: CitationPlanRequest, workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
+    if payload.citation_style not in CITATION_STYLES:
+        raise ApiError(
+            "invalid_citation_style",
+            f"Unknown citation style: {payload.citation_style}. Expected one of: {', '.join(sorted(CITATION_STYLES))}",
+        )
     try:
         result = create_citation_plan(
             workspace,
@@ -32,6 +39,7 @@ def citations_plan(payload: CitationPlanRequest, workspace: Path = Depends(resol
             guideline_ids=payload.guideline_ids or None,
             use_default_guidelines=payload.use_default_guidelines,
             allow_candidate_citations=payload.allow_candidate_citations,
+            citation_style=payload.citation_style,
         )
     except ValueError as exc:
         raise ApiError("invalid_citation_plan_target", str(exc)) from exc

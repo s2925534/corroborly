@@ -1230,6 +1230,7 @@ let citationPlanState = null;
 async function createCitationPlan() {
   const messageEl = document.getElementById("citation-plan-message");
   const target = document.getElementById("citation-target-input").value.trim();
+  const citationStyle = document.getElementById("citation-style-select").value;
   messageEl.hidden = false;
   messageEl.className = "small";
   if (!target) {
@@ -1239,7 +1240,7 @@ async function createCitationPlan() {
   }
   messageEl.textContent = "Creating plan...";
   try {
-    const result = await api("POST", "/api/v1/citations/plan", { json: { target } });
+    const result = await api("POST", "/api/v1/citations/plan", { json: { target, citation_style: citationStyle } });
     citationPlanState = { target, insertions: result.plan.insertions || [] };
     messageEl.textContent = `Plan created: ${citationPlanState.insertions.length} proposed insertion(s).`;
     renderCitationInsertions();

@@ -378,18 +378,21 @@ def _references(comparisons: list[dict[str, Any]]) -> dict[str, list[dict[str, A
     accepted = []
     candidates = []
     for source in comparisons:
+        metadata = {
+            "authors": source.get("authors"),
+            "year": source.get("year"),
+            "title": source.get("title"),
+            "publication_venue": source.get("publication_venue"),
+            "doi": source.get("doi"),
+        }
         row = {
             "source_id": source.get("source_id"),
             "status": source.get("status"),
-            "reference": apa7_reference(
-                {
-                    "authors": source.get("authors"),
-                    "year": source.get("year"),
-                    "title": source.get("title"),
-                    "publication_venue": source.get("publication_venue"),
-                    "doi": source.get("doi"),
-                }
-            ),
+            "reference": apa7_reference(metadata),
+            # Raw metadata, so callers that need a non-APA style (e.g.
+            # engine.citations.create_citation_plan's citation_style option)
+            # can reformat without a second lookup back to the source register.
+            "metadata": metadata,
         }
         if source.get("status") == "accepted":
             accepted.append(row)

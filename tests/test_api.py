@@ -1255,6 +1255,58 @@ def test_citations_plan_and_apply_via_api(client: TestClient, tmp_path: Path) ->
     assert target.read_text(encoding="utf-8") == original_text  # original still untouched after apply
 
 
+def test_citations_plan_accepts_citation_style_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("Container terminal automation uses berth planning evidence.", encoding="utf-8")
+    source_text = workspace / "sources_text" / "source-001.txt"
+    source_text.write_text("Berth planning evidence supports container terminal automation.", encoding="utf-8")
+    write_yaml(
+        workspace / "source-register.yaml",
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "source_id": "source-001",
+                    "status": "accepted",
+                    "provider": "local_folder",
+                    "file_name": "paper.pdf",
+                    "conversion": {"status": "converted", "output_path": str(source_text)},
+                    "citation_metadata": {"title": "Accepted Source", "authors": ["Smith, A."], "year": 2024},
+                }
+            ],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/citations/plan",
+        params={"workspace": str(workspace)},
+        json={"target": str(target), "citation_style": "mla"},
+    )
+    assert response.status_code == 200
+    plan = response.json()["data"]["plan"]
+    assert plan["citation_style"] == "mla"
+    assert plan["insertions"][0]["suggested_inline_citation"] == "(Smith)"
+
+
+def test_citations_plan_rejects_unknown_citation_style_via_api(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    target = workspace / "artefacts" / "papers" / "draft.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("Some text.", encoding="utf-8")
+
+    response = client.post(
+        "/api/v1/citations/plan",
+        params={"workspace": str(workspace)},
+        json={"target": str(target), "citation_style": "harvard"},
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "invalid_citation_style"
+
+
 def test_citations_plan_insertion_review_sets_status_without_hand_editing_via_api(
     client: TestClient, tmp_path: Path
 ) -> None:
