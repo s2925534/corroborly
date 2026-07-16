@@ -45,6 +45,7 @@ These are set once (`.env` or the process environment), not per request — but 
 | `LEDGERLY_UPLOAD_MAX_FILES` / `LEDGERLY_UPLOAD_MAX_FILE_SIZE_MB` | Caps batch artefact upload count/size (Phase 10). | Unrelated to AI/privacy — a resource-limit control. |
 | `LEDGERLY_API_USERNAME` / `LEDGERLY_API_PASSWORD` / `LEDGERLY_API_SESSION_HOURS` | The API/web server's single shared-credential login (Phase 9) — not a multi-account system (see TODO.md Phase 29 for that still-unbuilt idea). | |
 | `LEDGERLY_WORKSPACE_ROOT` | Confines which directories the API/web server may treat as a workspace. | Containment boundary, not an opt-in per se. |
+| `LEDGERLY_TEMPLATES_ROOT` | Where `ledgerly templates save/list` and `init --template` store/read saved workspace templates (project setup + guidelines). Default `~/.ledgerly/templates`. | Phase 32. Deliberately outside any single workspace, since a template seeds *future* workspaces. |
 
 ## What is never a flag
 

@@ -226,6 +226,12 @@ from ledgerly.engine.workspace import (
     infer_source_mode,
     init_workspace,
 )
+from ledgerly.engine.templates import (
+    apply_template_guidelines,
+    init_kwargs_from_template,
+    list_workspace_templates,
+    save_workspace_template,
+)
 
 app = typer.Typer(add_completion=False, help="Ledgerly (Phase 1 foundation).")
 sources_app = typer.Typer(help="Source inbox + register commands.")
@@ -251,6 +257,7 @@ notes_app = typer.Typer(help="Personal notes, meeting notes, and transcript comm
 paper_app = typer.Typer(help="Deterministic paper-draft skeleton commands.")
 transcribe_app = typer.Typer(help="Audio/video transcription via SourceScribe (subprocess).")
 stages_app = typer.Typer(help="Research stage status, target dates, and calendar export commands.")
+templates_app = typer.Typer(help="Reusable workspace template commands (project setup + guidelines, for `init --template`).")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
@@ -275,6 +282,7 @@ app.add_typer(doc_app, name="doc")
 app.add_typer(paper_app, name="paper")
 app.add_typer(transcribe_app, name="transcribe")
 app.add_typer(stages_app, name="stages")
+app.add_typer(templates_app, name="templates")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -490,38 +498,60 @@ def _prompt_optional_list(intro: str, item_prompt: str) -> list[str]:
     return items
 
 
-def _prompt_setup_preferences() -> dict[str, object]:
+def _choice_or_template(question: str, choices: list[str], template_value: object, *, default_index: int = 1) -> str:
+    """`_prompt_numbered_choice`, unless a workspace template already supplies
+    a valid value for this question -- in which case skip the prompt
+    entirely and use it, printing what was used so `--template` isn't a
+    silent override. Falls back to prompting if the template's value isn't
+    one of `choices` (e.g. a stale/hand-edited template file).
+    """
+    if isinstance(template_value, str) and template_value in choices:
+        console.print(f"{question}: [cyan]{template_value}[/cyan] (from template)")
+        return template_value
+    return _prompt_numbered_choice(question, choices, default_index=default_index)
+
+
+def _prompt_setup_preferences(template_defaults: Optional[dict[str, object]] = None) -> dict[str, object]:
+    template_defaults = template_defaults or {}
     supervisors = _prompt_optional_list(
         "Record supervisor or stakeholder names for local context?",
         "Supervisor or stakeholder name",
     )
     citation_styles = citation_style_choices()
-    citation_style = _prompt_numbered_choice(
+    citation_style = _choice_or_template(
         "Preferred citation style",
         citation_styles,
+        template_defaults.get("citation_style"),
         default_index=citation_styles.index(DEFAULT_CITATION_STYLE) + 1
         if DEFAULT_CITATION_STYLE in citation_styles
         else 1,
     )
-    custom_citation_style = None
-    if citation_style == "Custom Zotero/CSL style name":
+    custom_citation_style = template_defaults.get("custom_citation_style")
+    if citation_style == "Custom Zotero/CSL style name" and not custom_citation_style:
         custom_citation_style = typer.prompt("Custom Zotero/CSL style name", default="").strip() or None
 
-    primary_output_type = _prompt_numbered_choice("Primary output type", PRIMARY_OUTPUT_TYPES, default_index=1)
-    custom_primary_output_type = None
-    if primary_output_type == "custom":
+    primary_output_type = _choice_or_template(
+        "Primary output type", PRIMARY_OUTPUT_TYPES, template_defaults.get("primary_output_type"), default_index=1
+    )
+    custom_primary_output_type = template_defaults.get("custom_primary_output_type")
+    if primary_output_type == "custom" and not custom_primary_output_type:
         custom_primary_output_type = typer.prompt("Custom primary output type", default="").strip() or None
 
-    expects_data_files = _prompt_numbered_choice(
+    expects_data_files = _choice_or_template(
         "Will this project include CSV or SQLite data files?",
         DATA_FILE_EXPECTATIONS,
+        template_defaults.get("expects_data_files"),
         default_index=3,
     )
-    source_review_default = _prompt_numbered_choice(
+    source_review_default = _choice_or_template(
         "Default status for newly scanned sources",
         SOURCE_REVIEW_DEFAULTS,
+        template_defaults.get("source_review_default"),
         default_index=1,
     )
+    # AI preference is always asked fresh, even from a template -- an AI
+    # opt-in stance is a per-workspace decision this project never lets a
+    # saved template silently carry over (AGENTS.md Core Rule).
     ai_preference = _prompt_numbered_choice(
         "Optional AI features preference (AI remains disabled during init)",
         AI_PREFERENCES,
@@ -657,16 +687,32 @@ def serve(
 @app.command()
 def init(
     path: Optional[Path] = typer.Argument(None, help="Workspace folder to create (default: ./<project-name>)"),
+    template: Optional[str] = typer.Option(
+        None,
+        "--template",
+        help="Name of a saved workspace template (see `ledgerly templates list`) to pre-fill project type, "
+        "citation style, and guidelines from. Every setup question is still shown with the template's value "
+        "as the default -- pressing Enter accepts it, but nothing is applied without you confirming.",
+    ),
     log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
 ):
     """Create a new Ledgerly workspace (bare minimum wizard)."""
     _ensure_runtime_ready()
+    template_defaults: dict[str, object] = {}
+    if template:
+        try:
+            template_defaults = init_kwargs_from_template(template)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=2)
     project_name = typer.prompt("Project name")
-    project_type = _prompt_numbered_choice("Research level / project type", PROJECT_TYPES)
+    project_type = _choice_or_template(
+        "Research level / project type", PROJECT_TYPES, template_defaults.get("project_type")
+    )
     topic = typer.prompt("Research topic / short description", default="")
     research_questions = _prompt_research_questions()
-    setup_preferences = _prompt_setup_preferences()
+    setup_preferences = _prompt_setup_preferences(template_defaults)
     default_zotero_storage = find_default_zotero_storage()
     source_answer = typer.prompt(
         "Where are your source files?",
@@ -683,7 +729,7 @@ def init(
     strict = typer.confirm("Enable strict evidence mode?", default=True)
     prevent_uploads = typer.confirm(
         "Prevent workflows that upload full documents or datasets?",
-        default=True,
+        default=bool(template_defaults.get("prevent_full_document_uploads", True)),
     )
 
     workspace = path or _default_workspace_path(project_name)
@@ -710,7 +756,10 @@ def init(
             prevent_full_document_uploads=prevent_uploads,
             **setup_preferences,
         )
-        logger.info("Workspace created", operation="init", workspace=str(workspace))
+        applied_guidelines = apply_template_guidelines(workspace, template) if template else []
+        logger.info(
+            "Workspace created", operation="init", workspace=str(workspace), template=template, guideline_count=len(applied_guidelines)
+        )
         _finish(summary, summary_path, next_action=f"Run `ledgerly scan --workspace {workspace}`")
     except Exception as e:
         logger.error("Init failed", operation="init", error=str(e))
@@ -719,6 +768,8 @@ def init(
         raise
 
     if not quiet:
+        if template:
+            console.print(f"[green]Applied template[/green] '{template}' ({len(applied_guidelines)} guideline(s) copied in).")
         _print_init_next_steps(workspace, source_root)
 
 
@@ -4486,6 +4537,56 @@ def stages_ics_cmd(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Wrote[/green] {output_path}")
+
+
+@templates_app.command("save")
+def templates_save(
+    name: str = typer.Argument(..., help="Template name (letters, digits, '-', '_')."),
+    description: str = typer.Option("", "--description", help="Optional free-text description."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace to snapshot from (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Save this workspace's project-type setup and guidelines as a reusable template for `init --template`."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["templates", "save"], ws, log_level)
+    try:
+        template_dir = save_workspace_template(ws, name, description=description)
+    except ValueError as e:
+        logger.error("Template save failed", operation="templates_save", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    logger.info("Saved workspace template", operation="templates_save", name=name, template_dir=str(template_dir))
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Saved template[/green] '{name}' -> {template_dir}")
+
+
+@templates_app.command("list")
+def templates_list_cmd():
+    """List saved workspace templates (not workspace-scoped -- these live outside any single workspace)."""
+    templates = list_workspace_templates()
+    if not templates:
+        console.print("No workspace templates saved yet. Create one with `ledgerly templates save <name>`.")
+        return
+    table = Table(title="Workspace Templates")
+    table.add_column("name")
+    table.add_column("project_type")
+    table.add_column("citation_style")
+    table.add_column("guidelines")
+    table.add_column("description")
+    for tpl in templates:
+        table.add_row(
+            tpl.get("name", ""),
+            tpl.get("project_type") or "",
+            tpl.get("citation_style") or "",
+            str(tpl.get("guideline_count", 0)),
+            tpl.get("description") or "",
+        )
+    console.print(table)
 
 
 @zotero_app.command("collections")

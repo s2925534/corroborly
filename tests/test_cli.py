@@ -1365,6 +1365,91 @@ def test_cli_init_collects_setup_preferences(tmp_path: Path) -> None:
     assert settings["ai"]["setup_preference"] == "yes but disabled for now"
 
 
+def test_cli_templates_save_list_and_init_with_template(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LEDGERLY_TEMPLATES_ROOT", str(tmp_path / "templates-root"))
+    source_workspace = tmp_path / "source-workspace"
+    init_workspace(
+        source_workspace,
+        project_name="Source",
+        project_type="PhD",
+        topic="",
+        citation_style="IEEE",
+        primary_output_type="thesis",
+        source_review_default="maybe",
+        prevent_full_document_uploads=False,
+        expects_data_files="yes",
+    )
+    guideline_path = tmp_path / "style-guide.txt"
+    guideline_path.write_text("Follow IEEE citation conventions.", encoding="utf-8")
+    from ledgerly.engine.guidelines import register_guideline, set_default_guidelines
+
+    registration = register_guideline(source_workspace, str(guideline_path), title="Style Guide")
+    set_default_guidelines(source_workspace, [registration.record["id"]])
+
+    save_result = runner.invoke(
+        app, ["templates", "save", "phd-template", "--workspace", str(source_workspace), "--quiet"]
+    )
+    assert save_result.exit_code == 0, save_result.output
+
+    list_result = runner.invoke(app, ["templates", "list"])
+    assert list_result.exit_code == 0, list_result.output
+    assert "phd-template" in list_result.output
+
+    new_workspace = tmp_path / "new-workspace"
+    init_result = runner.invoke(
+        app,
+        ["init", str(new_workspace), "--template", "phd-template", "--quiet"],
+        input=(
+            "Templated Project\n"  # project name (project type skipped, from template)
+            "Topic\n"  # topic
+            "n\n"  # research questions
+            "n\n"  # supervisors
+            # citation style, primary output type, expects_data_files, source_review_default
+            # all skipped, supplied by the template
+            "\n"  # ai preference (default)
+            "configure_later\n"  # source location
+            "\n"  # artefact root (default)
+            "y\n"  # strict evidence mode
+            "y\n"  # prevent full document uploads
+        ),
+    )
+    assert init_result.exit_code == 0, init_result.output
+
+    context = read_yaml(new_workspace / "research-context.yaml")
+    assert context["project"]["type"] == "PhD"
+    assert context["citation"]["style"] == "IEEE"
+    assert context["artefacts"]["primary_output_type"] == "thesis"
+    assert context["data"]["expects_csv_or_sqlite"] == "yes"
+    assert context["sources"]["new_source_status"] == "maybe"
+
+    from ledgerly.engine.guidelines import list_guidelines
+
+    new_guidelines = list_guidelines(new_workspace)
+    assert len(new_guidelines) == 1
+    assert new_guidelines[0]["title"] == "Style Guide"
+    assert Path(new_guidelines[0]["snapshot_path"]).is_file()
+
+
+def test_cli_templates_save_rejects_invalid_name(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LEDGERLY_TEMPLATES_ROOT", str(tmp_path / "templates-root"))
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["templates", "save", "bad name", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 2, result.output
+
+
+def test_cli_init_with_unknown_template_fails_before_prompting(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LEDGERLY_TEMPLATES_ROOT", str(tmp_path / "templates-root"))
+    workspace = tmp_path / "workspace"
+
+    result = runner.invoke(app, ["init", str(workspace), "--template", "does-not-exist", "--quiet"])
+
+    assert result.exit_code == 2, result.output
+    assert not workspace.exists() or not (workspace / "research-context.yaml").exists()
+
+
 def test_cli_scan_list_status_and_source_transitions(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     source_root = tmp_path / "sources"
