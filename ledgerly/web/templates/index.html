@@ -634,6 +634,51 @@
   </section>
 
   <section class="panel">
+    <h2>Audio/video transcription (SourceScribe)</h2>
+    <p class="muted small">Shells out to a local SourceScribe checkout (subprocess, never imported). Local Whisper is used by default; the OpenAI backend is only used if you explicitly check "Use OpenAI API" below. Completed transcripts are imported into the notes store above — no AI processing happens on the transcript text itself.</p>
+
+    <div class="zotero-link-actions">
+      <button id="transcribe-readiness-btn" type="button" class="secondary">Check SourceScribe readiness</button>
+    </div>
+    <p id="transcribe-readiness-message" class="small" hidden></p>
+
+    <details id="transcribe-upload-details" class="detail-box">
+      <summary class="link">Upload a file</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="transcribe-file-input">Audio/video file</label>
+        <input id="transcribe-file-input" type="file">
+        <div class="zotero-link-actions">
+          <button id="transcribe-upload-btn" type="button">Upload</button>
+        </div>
+        <p id="transcribe-upload-message" class="small" hidden></p>
+      </div>
+    </details>
+
+    <details id="transcribe-start-details" class="detail-box">
+      <summary class="link">Start a transcription job</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="transcribe-job-id-input">Job ID</label>
+        <input id="transcribe-job-id-input" type="text" placeholder="transcribe-001">
+        <label class="field-label" for="transcribe-language-input">Language (optional)</label>
+        <input id="transcribe-language-input" type="text" placeholder="en">
+        <label class="field-label" for="transcribe-prompt-input">Prompt (optional)</label>
+        <input id="transcribe-prompt-input" type="text">
+        <label><input id="transcribe-ai-checkbox" type="checkbox"> Use OpenAI API (default: local Whisper)</label>
+        <div class="zotero-link-actions">
+          <button id="transcribe-start-btn" type="button">Start</button>
+        </div>
+        <p id="transcribe-start-message" class="small" hidden></p>
+      </div>
+    </details>
+
+    <table class="data-table">
+      <thead><tr><th>Job</th><th>Status</th><th>File</th><th>Note</th></tr></thead>
+      <tbody id="transcribe-jobs-tbody"></tbody>
+    </table>
+    <p id="transcribe-jobs-empty" class="muted small" hidden>No transcription jobs yet — upload a file above to get started.</p>
+  </section>
+
+  <section class="panel">
     <h2>Export &amp; reporting</h2>
 
     <div class="zotero-link-actions">

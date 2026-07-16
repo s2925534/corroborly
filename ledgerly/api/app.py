@@ -30,6 +30,7 @@ from ledgerly.api.routers import (
     rqs,
     search,
     sources,
+    transcription,
     validation,
     zotero,
 )
@@ -93,6 +94,9 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix="/api/v1/search", tags=["search"], dependencies=protected)
     app.include_router(abstracts.router, prefix="/api/v1/abstracts", tags=["abstracts"], dependencies=protected)
     app.include_router(ai.router, prefix="/api/v1/ai", tags=["ai"], dependencies=protected)
+    app.include_router(
+        transcription.router, prefix="/api/v1/transcription", tags=["transcription"], dependencies=protected
+    )
     mount_web(app)
     return app
 

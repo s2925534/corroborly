@@ -111,6 +111,14 @@ from ledgerly.engine.metadata_quality import (
 from ledgerly.engine.migrations import migrate_workspace
 from ledgerly.engine.pdf_merge import pdf_merge_report
 from ledgerly.engine.notes import add_note, add_note_tag, import_transcript, list_notes, search_notes
+from ledgerly.engine.transcription import (
+    TranscriptionError,
+    get_transcription_job,
+    list_transcription_jobs,
+    sourcescribe_readiness_report,
+    start_transcription,
+    upload_transcription_source,
+)
 from ledgerly.engine.project_log import (
     add_context_change,
     add_decision,
@@ -225,6 +233,7 @@ db_app = typer.Typer(help="Workspace SQLite index and memory commands.")
 doc_app = typer.Typer(help="Document vault version, diff, and restore commands.")
 notes_app = typer.Typer(help="Personal notes, meeting notes, and transcript commands.")
 paper_app = typer.Typer(help="Deterministic paper-draft skeleton commands.")
+transcribe_app = typer.Typer(help="Audio/video transcription via SourceScribe (subprocess).")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
@@ -247,6 +256,7 @@ app.add_typer(abstracts_app, name="abstracts")
 app.add_typer(db_app, name="db")
 app.add_typer(doc_app, name="doc")
 app.add_typer(paper_app, name="paper")
+app.add_typer(transcribe_app, name="transcribe")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -4086,6 +4096,136 @@ def notes_import_transcript(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Imported[/green] {note['id']} from {path}")
+
+
+@transcribe_app.command("readiness")
+def transcribe_readiness(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Check whether SourceScribe (LEDGERLY_SOURCESCRIBE_PATH) is reachable for transcription."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["transcribe", "readiness"], ws, log_level)
+    report = sourcescribe_readiness_report(ws)
+    logger.info("Checked SourceScribe readiness", operation="transcribe_readiness", available=report["available"])
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    if report["available"]:
+        console.print(f"[green]Available[/green] at {report['sourcescribe_path']}")
+        console.print(f"  Python: {report['python_executable']}")
+        console.print(f"  Supported extensions: {', '.join(report['supported_extensions'])}")
+    else:
+        console.print(f"[yellow]Not available[/yellow]: {report['reason']}")
+
+
+@transcribe_app.command("upload")
+def transcribe_upload(
+    path: Path = typer.Argument(..., help="Audio/video file to upload for transcription."),
+    max_size_mb: float = typer.Option(500.0, "--max-size-mb", help="Reject uploads larger than this."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Upload an audio/video file, registering a new pending transcription job (no transcription yet)."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["transcribe", "upload"], ws, log_level)
+    try:
+        job = upload_transcription_source(ws, path, max_file_size_bytes=int(max_size_mb * 1024 * 1024))
+    except ValueError as e:
+        logger.error("Failed to upload transcription source", operation="transcribe_upload", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    logger.info("Uploaded transcription source", operation="transcribe_upload", job_id=job["job_id"])
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print(f"[green]Uploaded[/green] {job['job_id']} ({job['original_file_name']}, status={job['status']})")
+
+
+@transcribe_app.command("start")
+def transcribe_start(
+    job_id: str = typer.Argument(..., help="Job ID, e.g. transcribe-001."),
+    language: Optional[str] = typer.Option(None, "--language", help="Optional language hint, e.g. en."),
+    ai: bool = typer.Option(False, "--ai/--no-ai", help="Use the OpenAI API backend instead of local Whisper."),
+    prompt: Optional[str] = typer.Option(None, "--prompt", help="Optional transcription prompt/context."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Synchronously run SourceScribe on an uploaded job, importing the transcript into the note store on success."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["transcribe", "start"], ws, log_level)
+    try:
+        job = start_transcription(ws, job_id, language=language, use_ai=ai, prompt=prompt)
+    except (ValueError, TranscriptionError) as e:
+        logger.error("Failed to start transcription", operation="transcribe_start", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    logger.info("Ran transcription job", operation="transcribe_start", job_id=job_id, status=job["status"])
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    if job["status"] == "completed":
+        console.print(f"[green]Completed[/green] {job_id} -> note {job.get('note_id')}")
+    else:
+        console.print(f"[yellow]Failed[/yellow] {job_id}: {job.get('error')}")
+
+
+@transcribe_app.command("status")
+def transcribe_status(
+    job_id: str = typer.Argument(..., help="Job ID, e.g. transcribe-001."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Show a single transcription job's current status and details."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["transcribe", "status"], ws, log_level)
+    try:
+        job = get_transcription_job(ws, job_id)
+    except ValueError as e:
+        logger.error("Unknown transcription job", operation="transcribe_status", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    logger.info("Read transcription job status", operation="transcribe_status", job_id=job_id, status=job["status"])
+    _finish(summary, summary_path)
+    if not quiet:
+        for key, value in job.items():
+            console.print(f"  {key}: {value}")
+
+
+@transcribe_app.command("list")
+def transcribe_list(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List all transcription jobs."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["transcribe", "list"], ws, log_level)
+    rows = list_transcription_jobs(ws)
+    logger.info("Listed transcription jobs", operation="transcribe_list", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Transcription jobs")
+    table.add_column("job_id")
+    table.add_column("status")
+    table.add_column("original_file_name")
+    table.add_column("note_id")
+    for row in rows:
+        table.add_row(row.get("job_id", ""), row.get("status", ""), row.get("original_file_name", ""), row.get("note_id", ""))
+    console.print(table)
 
 
 @zotero_app.command("collections")

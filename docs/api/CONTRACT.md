@@ -2,7 +2,7 @@
 
 This document defines the FastAPI boundary for Ledgerly.
 
-Contract status: implementation started in project version `0.7.0`; every route documented below is implemented in `ledgerly.api` (run with `ledgerly serve`), including the AI Routes section (added 2026-07-16, per Pedro's explicit go-ahead — `POST /api/v1/ai/{test,review,novelty,rqs/assess,corpus-summary,claim-check,citation-gaps,artefact-cross-reference,source-relevance,abstract-screening}` and `POST /api/v1/search/{ai-query-plan,ai-candidate-review}`). Novelty assessment has no deterministic engine path (`ledgerly.engine.ai.ai_novelty_assessment` is AI-only) — it lives at `POST /api/v1/ai/novelty` under the same AI opt-in and privacy-boundary rules as the rest of that section, not as a separate `/api/v1/novelty` route implying a deterministic path that doesn't exist.
+Contract status: implementation started in project version `0.7.0`; every route documented below is implemented in `ledgerly.api` (run with `ledgerly serve`), including the AI Routes section (added 2026-07-16, per Pedro's explicit go-ahead — `POST /api/v1/ai/{test,review,novelty,rqs/assess,corpus-summary,claim-check,citation-gaps,artefact-cross-reference,source-relevance,abstract-screening}` and `POST /api/v1/search/{ai-query-plan,ai-candidate-review}`) and the Transcription Routes section (added 2026-07-16, per Pedro's explicit go-ahead on the subprocess integration mechanism — `/api/v1/transcription/{readiness,upload,upload/limits,jobs,jobs/{id},jobs/{id}/start}`). Novelty assessment has no deterministic engine path (`ledgerly.engine.ai.ai_novelty_assessment` is AI-only) — it lives at `POST /api/v1/ai/novelty` under the same AI opt-in and privacy-boundary rules as the rest of that section, not as a separate `/api/v1/novelty` route implying a deterministic path that doesn't exist.
 
 The API must be local-first, workspace-scoped, and a thin transport layer over `ledgerly.engine` functions. It must not duplicate business logic already implemented in the engine.
 
@@ -862,6 +862,54 @@ Deterministically imports a transcript export (plain text, VTT, or SRT) from a s
 Engine source:
 
 - `ledgerly.engine.notes.import_transcript`
+
+## Transcription Routes (implemented, Phase 30)
+
+Audio/video transcription via a sibling SourceScribe checkout, invoked as a subprocess (never imported — `LEDGERLY_SOURCESCRIBE_PATH` points at the checkout). Local Whisper is the default backend; SourceScribe's own optional OpenAI backend is only ever used when a job explicitly sets `"ai": true`, matching AGENTS.md's "Core Rule: No Hallucinations" opt-in requirement. Synchronous only — `POST .../jobs/{job_id}/start` blocks until SourceScribe finishes; no background-job model exists yet. On completion, the transcript is imported into the Phase 25 notes store via `ledgerly.engine.notes.import_transcript` (no AI processing on the transcript text itself). Added 2026-07-16.
+
+### `GET /api/v1/transcription/readiness` (implemented)
+
+Reports whether a SourceScribe checkout is configured and reachable, without starting any job.
+
+Engine source:
+
+- `ledgerly.engine.transcription.sourcescribe_readiness_report`
+
+### `GET /api/v1/transcription/upload/limits` (implemented)
+
+Reports the configured single-file upload size limit (`LEDGERLY_TRANSCRIBE_MAX_FILE_SIZE_MB`, default 500MB) and the allowed audio/video extensions.
+
+### `GET /api/v1/transcription/jobs` (implemented)
+
+Lists all transcription jobs for the workspace.
+
+Engine source:
+
+- `ledgerly.engine.transcription.list_transcription_jobs`
+
+### `GET /api/v1/transcription/jobs/{job_id}` (implemented)
+
+Returns a single transcription job's current status and details. 404 if unknown.
+
+Engine source:
+
+- `ledgerly.engine.transcription.get_transcription_job`
+
+### `POST /api/v1/transcription/upload` (implemented)
+
+Uploads a single audio/video file (multipart, field name `file`) and registers a new `pending` transcription job. Rejects unsupported extensions or oversized files with 400. A single-file route, not a batch like the artefact upload route — each transcription job runs its own subprocess and produces its own note.
+
+Engine source:
+
+- `ledgerly.engine.transcription.upload_transcription_source`
+
+### `POST /api/v1/transcription/jobs/{job_id}/start` (implemented)
+
+Synchronously runs SourceScribe on an uploaded job. Body: `{"language": string | null, "ai": bool = false, "prompt": string | null}`. Returns the updated job record (`status` becomes `completed` or `failed`; `note_id` set on success). 404 for an unknown or non-startable job; 503 if SourceScribe is not configured/reachable.
+
+Engine source:
+
+- `ledgerly.engine.transcription.start_transcription`
 
 ## External Search Routes
 

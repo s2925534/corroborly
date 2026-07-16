@@ -1,4 +1,6 @@
+import io
 import os
+import wave
 from pathlib import Path
 
 import pytest
@@ -2093,3 +2095,167 @@ def test_db_activate_backend_route_requires_configuration(client: TestClient, tm
 
     assert response.status_code == 400
     assert response.json()["errors"][0]["code"] == "secondary_backend_activation_failed"
+
+
+# --- transcription (Phase 30, subprocess integration with a sibling SourceScribe checkout) ---
+
+
+def test_transcription_readiness_route_reports_unconfigured_by_default(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("LEDGERLY_SOURCESCRIBE_PATH", raising=False)
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get("/api/v1/transcription/readiness", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["available"] is False
+    assert "reason" in body
+
+
+def test_transcription_upload_limits_route(client: TestClient) -> None:
+    response = client.get("/api/v1/transcription/upload/limits")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["max_file_size_mb"] > 0
+    assert ".wav" in body["allowed_extensions"]
+
+
+def test_transcription_upload_registers_job_and_lists_it(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    upload_response = client.post(
+        "/api/v1/transcription/upload",
+        params={"workspace": str(workspace)},
+        files={"file": ("clip.wav", b"\x00\x00" * 800, "audio/wav")},
+    )
+
+    assert upload_response.status_code == 200
+    job = upload_response.json()["data"]
+    assert job["job_id"] == "transcribe-001"
+    assert job["status"] == "pending"
+
+    list_response = client.get("/api/v1/transcription/jobs", params={"workspace": str(workspace)})
+    assert list_response.status_code == 200
+    assert [j["job_id"] for j in list_response.json()["data"]] == ["transcribe-001"]
+
+    get_response = client.get(
+        "/api/v1/transcription/jobs/transcribe-001", params={"workspace": str(workspace)}
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["data"]["job_id"] == "transcribe-001"
+
+
+def test_transcription_upload_rejects_unsupported_extension(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/transcription/upload",
+        params={"workspace": str(workspace)},
+        files={"file": ("notes.pdf", b"not audio", "application/pdf")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "invalid_transcription_upload"
+
+
+def test_transcription_job_get_unknown_id_returns_404(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.get(
+        "/api/v1/transcription/jobs/transcribe-999", params={"workspace": str(workspace)}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["errors"][0]["code"] == "unknown_transcription_job"
+
+
+def test_transcription_start_returns_503_when_sourcescribe_not_configured(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("LEDGERLY_SOURCESCRIBE_PATH", raising=False)
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    client.post(
+        "/api/v1/transcription/upload",
+        params={"workspace": str(workspace)},
+        files={"file": ("clip.wav", b"\x00\x00" * 800, "audio/wav")},
+    )
+
+    response = client.post(
+        "/api/v1/transcription/jobs/transcribe-001/start",
+        params={"workspace": str(workspace)},
+        json={},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["errors"][0]["code"] == "sourcescribe_unavailable"
+
+
+def test_transcription_start_unknown_job_returns_404(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/transcription/jobs/transcribe-999/start",
+        params={"workspace": str(workspace)},
+        json={},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["errors"][0]["code"] == "invalid_transcription_job"
+
+
+def _real_sourcescribe_available() -> bool:
+    path = Path("/Users/pedro/Documents/_Projects/transcriber")
+    return (path / "main.py").is_file() and (path / ".venv" / "bin" / "python").is_file()
+
+
+requires_real_sourcescribe_api = pytest.mark.skipif(
+    not _real_sourcescribe_available(),
+    reason="No real local SourceScribe (transcriber) checkout available for a genuine end-to-end run",
+)
+
+
+def _real_wav_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "w") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(8000)
+        f.writeframes(b"\x00\x00" * 800)
+    return buffer.getvalue()
+
+
+@requires_real_sourcescribe_api
+def test_transcription_start_runs_real_sourcescribe_end_to_end_via_api(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LEDGERLY_SOURCESCRIBE_PATH", "/Users/pedro/Documents/_Projects/transcriber")
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    upload_response = client.post(
+        "/api/v1/transcription/upload",
+        params={"workspace": str(workspace)},
+        files={"file": ("clip.wav", _real_wav_bytes(), "audio/wav")},
+    )
+    job_id = upload_response.json()["data"]["job_id"]
+
+    start_response = client.post(
+        f"/api/v1/transcription/jobs/{job_id}/start",
+        params={"workspace": str(workspace)},
+        json={"language": "en"},
+    )
+
+    assert start_response.status_code == 200
+    job = start_response.json()["data"]
+    assert job["status"] in {"completed", "failed"}
+    if job["status"] == "completed":
+        notes_response = client.get("/api/v1/notes", params={"workspace": str(workspace)})
+        assert any(n["id"] == job["note_id"] for n in notes_response.json()["data"])

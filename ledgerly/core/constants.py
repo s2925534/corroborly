@@ -33,6 +33,7 @@ class WorkspaceFiles:
 
     document_vault_ledger: str = "document-vault.yaml"
     personal_notes_ledger: str = "personal-notes.yaml"
+    transcription_jobs: str = "transcription-jobs.yaml"
 
 
 WORKSPACE_FILES = WorkspaceFiles()
@@ -80,6 +81,7 @@ WORKSPACE_DIRS: list[str] = [
     "document_vault/uploads",
     "document_vault/uploads/originals",
     "document_vault/uploads/renamed",
+    "transcription_uploads",
 ]
 
 

@@ -106,6 +106,7 @@ async function loadWorkspace(workspace) {
   refreshProjectLog();
   refreshDataSources();
   refreshNotes();
+  refreshTranscribeJobs();
 }
 
 async function loadUploadLimits() {
@@ -2647,6 +2648,111 @@ function setupNotesPanel() {
   });
 }
 
+// --- audio/video transcription (SourceScribe, subprocess) ---
+
+async function checkTranscribeReadiness() {
+  const messageEl = document.getElementById("transcribe-readiness-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Checking...";
+  try {
+    const report = await api("GET", "/api/v1/transcription/readiness");
+    if (report.available) {
+      messageEl.textContent = `Available at ${report.sourcescribe_path}. Supported: ${report.supported_extensions.join(", ")}.`;
+    } else {
+      messageEl.textContent = report.reason;
+      messageEl.classList.add("error");
+    }
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function refreshTranscribeJobs() {
+  const tbody = document.getElementById("transcribe-jobs-tbody");
+  const emptyEl = document.getElementById("transcribe-jobs-empty");
+  try {
+    const jobs = await api("GET", "/api/v1/transcription/jobs");
+    tbody.innerHTML = "";
+    emptyEl.hidden = jobs.length > 0;
+    for (const job of jobs) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(job.job_id || "")}</td>
+        <td>${statusBadgeHtml(job.status)}</td>
+        <td>${escapeHtml(job.original_file_name || "")}</td>
+        <td class="muted small">${escapeHtml(job.note_id || (job.error || ""))}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    tbody.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
+async function uploadTranscribeFile() {
+  const messageEl = document.getElementById("transcribe-upload-message");
+  const fileInput = document.getElementById("transcribe-file-input");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!fileInput.files.length) {
+    messageEl.textContent = "Choose a file first.";
+    messageEl.classList.add("error");
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  messageEl.textContent = "Uploading...";
+  try {
+    const job = await api("POST", "/api/v1/transcription/upload", { formData });
+    fileInput.value = "";
+    messageEl.textContent = `Uploaded ${job.job_id} (status: ${job.status}).`;
+    document.getElementById("transcribe-job-id-input").value = job.job_id;
+    await refreshTranscribeJobs();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function startTranscribeJob() {
+  const messageEl = document.getElementById("transcribe-start-message");
+  const jobId = document.getElementById("transcribe-job-id-input").value.trim();
+  const language = document.getElementById("transcribe-language-input").value.trim();
+  const prompt = document.getElementById("transcribe-prompt-input").value.trim();
+  const useAi = document.getElementById("transcribe-ai-checkbox").checked;
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!jobId) {
+    messageEl.textContent = "Job ID is required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  const body = { ai: useAi };
+  if (language) body.language = language;
+  if (prompt) body.prompt = prompt;
+  messageEl.textContent = "Transcribing (this runs synchronously and may take a while)...";
+  try {
+    const job = await api("POST", `/api/v1/transcription/jobs/${encodeURIComponent(jobId)}/start`, { json: body });
+    messageEl.textContent =
+      job.status === "completed" ? `Completed → note ${job.note_id}.` : `Failed: ${job.error || "unknown error"}`;
+    await refreshTranscribeJobs();
+    if (job.status === "completed") await refreshNotes();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function setupTranscribePanel() {
+  document.getElementById("transcribe-readiness-btn").addEventListener("click", checkTranscribeReadiness);
+  document.getElementById("transcribe-upload-btn").addEventListener("click", uploadTranscribeFile);
+  document.getElementById("transcribe-start-btn").addEventListener("click", startTranscribeJob);
+}
+
 // --- create workspace (not gated behind an already-loaded workspace) ---
 
 async function createWorkspace() {
@@ -2714,6 +2820,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupSourcesPanel();
   setupCreateWorkspacePanel();
   setupNotesPanel();
+  setupTranscribePanel();
   setupRqAndArtefactPanels();
   setupClaimsPanel();
   setupCitationPanel();

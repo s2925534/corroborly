@@ -18,6 +18,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Audio/video transcription (Phase 30, LEDGERLY_SOURCESCRIBE_PATH) is not
+# bundled here: unlike tesseract/poppler, SourceScribe is a whole separate
+# sibling project with its own Python deps and a local Whisper model, not a
+# couple of apt packages. A server deployment that wants transcription needs
+# its own SourceScribe checkout mounted into the container (or run alongside
+# it) and LEDGERLY_SOURCESCRIBE_PATH pointed at that mount -- not something
+# this image does automatically.
+
 WORKDIR /app
 COPY pyproject.toml ./
 COPY ledgerly ./ledgerly

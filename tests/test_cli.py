@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import wave
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -1585,6 +1586,77 @@ def test_cli_paper_draft_rejects_unknown_rq_id(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "Unknown research question" in result.output
+
+
+def test_cli_transcribe_readiness_reports_unconfigured_by_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("LEDGERLY_SOURCESCRIBE_PATH", raising=False)
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["transcribe", "readiness", "--workspace", str(workspace)])
+
+    assert result.exit_code == 0, result.output
+    assert "Not available" in result.output
+
+
+def test_cli_transcribe_upload_and_list(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    audio_path = tmp_path / "clip.wav"
+    with wave.open(str(audio_path), "w") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(8000)
+        f.writeframes(b"\x00\x00" * 800)
+
+    upload_result = runner.invoke(app, ["transcribe", "upload", str(audio_path), "--workspace", str(workspace)])
+    assert upload_result.exit_code == 0, upload_result.output
+    assert "transcribe-001" in upload_result.output
+
+    list_result = runner.invoke(app, ["transcribe", "list", "--workspace", str(workspace)])
+    assert list_result.exit_code == 0, list_result.output
+    assert "transcribe-001" in list_result.output
+    assert "pending" in list_result.output
+
+
+def test_cli_transcribe_upload_rejects_unsupported_extension(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    bogus_path = tmp_path / "notes.pdf"
+    bogus_path.write_text("not audio", encoding="utf-8")
+
+    result = runner.invoke(app, ["transcribe", "upload", str(bogus_path), "--workspace", str(workspace)])
+
+    assert result.exit_code == 2
+    assert "Unsupported file extension" in result.output
+
+
+def test_cli_transcribe_start_fails_without_sourcescribe_configured(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("LEDGERLY_SOURCESCRIBE_PATH", raising=False)
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    audio_path = tmp_path / "clip.wav"
+    with wave.open(str(audio_path), "w") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(8000)
+        f.writeframes(b"\x00\x00" * 800)
+    runner.invoke(app, ["transcribe", "upload", str(audio_path), "--workspace", str(workspace)])
+
+    result = runner.invoke(app, ["transcribe", "start", "transcribe-001", "--workspace", str(workspace)])
+
+    assert result.exit_code == 2
+    assert "LEDGERLY_SOURCESCRIBE_PATH" in result.output
+
+
+def test_cli_transcribe_status_unknown_job_fails(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["transcribe", "status", "transcribe-999", "--workspace", str(workspace)])
+
+    assert result.exit_code == 2
+    assert "Unknown transcription job_id" in result.output
 
 
 def test_cli_artefact_review_dependencies_health_export_and_backup_inspect(tmp_path: Path) -> None:
