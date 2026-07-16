@@ -144,20 +144,14 @@ def _yaml_text(data: object) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=120)
 
 
-def build_supervisor_bundle(workspace: Path) -> Path:
-    """A single self-contained "hand this to my supervisor" bundle: the claim
-    ledger, every citation plan created so far, and the workspace review
-    report, as one readable Markdown digest plus a zip. Deliberately Markdown
-    + zip rather than PDF — no PDF-generation dependency exists anywhere in
-    this project today, and a Markdown digest is trivially convertible to
-    PDF by the supervisor (or the user) with whatever tool they already have.
+def _gather_supervisor_bundle_data(workspace: Path) -> dict[str, Any]:
+    """The data both `build_supervisor_bundle` (Markdown) and
+    `build_supervisor_bundle_html` (HTML) render -- gathered once so the two
+    output formats can never silently drift out of sync with each other.
     """
     from ledgerly.engine.ai import list_ai_usage
     from ledgerly.engine.claims import citation_gap_claims, claim_source_validation_report, list_claims
     from ledgerly.engine.reports import generate_workspace_report
-
-    output_dir = workspace / "outputs" / "reports"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     workspace_report_path = generate_workspace_report(workspace)
     claims = list_claims(workspace)
@@ -168,10 +162,40 @@ def build_supervisor_bundle(workspace: Path) -> Path:
     plan_dir = workspace / "outputs" / "citation-plans"
     plan_paths = sorted(plan_dir.glob("citation-plan-*.md")) if plan_dir.is_dir() else []
 
+    return {
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "workspace_report_path": workspace_report_path,
+        "claims": claims,
+        "gap_ids": gap_ids,
+        "issues_by_claim": issues_by_claim,
+        "plan_paths": plan_paths,
+        "ai_usage": list_ai_usage(workspace),
+    }
+
+
+def build_supervisor_bundle(workspace: Path) -> Path:
+    """A single self-contained "hand this to my supervisor" bundle: the claim
+    ledger, every citation plan created so far, and the workspace review
+    report, as one readable Markdown digest plus a zip. Deliberately Markdown
+    + zip rather than PDF — no PDF-generation dependency exists anywhere in
+    this project today, and a Markdown digest is trivially convertible to
+    PDF by the supervisor (or the user) with whatever tool they already have.
+    """
+    output_dir = workspace / "outputs" / "reports"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    data = _gather_supervisor_bundle_data(workspace)
+    workspace_report_path = data["workspace_report_path"]
+    claims = data["claims"]
+    gap_ids = data["gap_ids"]
+    issues_by_claim = data["issues_by_claim"]
+    plan_paths = data["plan_paths"]
+    ai_usage = data["ai_usage"]
+
     lines = [
         "# Supervisor Review Bundle",
         "",
-        f"Generated: {datetime.now(timezone.utc).replace(microsecond=0).isoformat()}",
+        f"Generated: {data['generated_at']}",
         "",
         "## Claim Ledger",
         "",
@@ -198,7 +222,6 @@ def build_supervisor_bundle(workspace: Path) -> Path:
 
     lines.extend(["", "## Workspace Review Report", "", workspace_report_path.read_text(encoding="utf-8").strip(), ""])
 
-    ai_usage = list_ai_usage(workspace)
     lines.extend(["", "## AI Usage Disclosure", ""])
     if ai_usage:
         used_count = sum(1 for entry in ai_usage if entry.get("ai_used"))
@@ -235,4 +258,113 @@ def build_supervisor_bundle(workspace: Path) -> Path:
         zf.writestr("ai-usage-ledger.yaml", _yaml_text({"version": 1, "entries": ai_usage}))
         for plan_path in plan_paths:
             zf.write(plan_path, plan_path.relative_to(workspace).as_posix())
+        html_path = build_supervisor_bundle_html(workspace)
+        zf.write(html_path, html_path.name)
     return bundle_path
+
+
+_SUPERVISOR_BUNDLE_HTML_STYLE = """
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.5; color: #1a1a1a; }
+h1, h2, h3 { color: #111; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; font-size: 0.9rem; }
+th { background: #f2f2f2; }
+pre { background: #f7f7f7; border: 1px solid #ddd; padding: 1rem; overflow-x: auto; white-space: pre-wrap; }
+.muted { color: #666; font-size: 0.9rem; }
+@media (prefers-color-scheme: dark) {
+  body { background: #12141a; color: #e4e6eb; }
+  h1, h2, h3 { color: #f2f2f2; }
+  th { background: #1e2028; }
+  th, td { border-color: #333; }
+  pre { background: #1a1c22; border-color: #333; }
+  .muted { color: #9aa0a6; }
+}
+"""
+
+
+def build_supervisor_bundle_html(workspace: Path) -> Path:
+    """A fully self-contained, no-install HTML viewer for the same content
+    `build_supervisor_bundle` writes as Markdown -- a supervisor or co-author
+    without Ledgerly installed can open this by double-clicking rather than
+    needing a Markdown renderer. Inline CSS only, no external assets, no JS.
+    Long-form blocks (citation plans, the workspace review report) are
+    already-formatted Markdown text -- shown verbatim in `<pre>` blocks
+    rather than re-parsed, an honest simplification rather than a from-
+    scratch Markdown-to-HTML renderer.
+    """
+    import html as html_module
+
+    output_dir = workspace / "outputs" / "reports"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data = _gather_supervisor_bundle_data(workspace)
+    esc = html_module.escape
+
+    claim_rows = "".join(
+        f"<tr><td>{esc(claim.get('id', ''))}</td><td>{esc(claim.get('status', ''))}</td>"
+        f"<td>{'yes' if claim.get('id') in data['gap_ids'] else 'no'}</td>"
+        f"<td>{len(claim.get('linked_sources', []))}</td>"
+        f"<td>{len(data['issues_by_claim'].get(claim.get('id'), []))}</td>"
+        f"<td>{esc(claim.get('text') or '')}</td></tr>"
+        for claim in data["claims"]
+    ) or "<tr><td colspan='6'><em>None recorded yet.</em></td></tr>"
+
+    if data["plan_paths"]:
+        plan_sections = "".join(
+            f"<h3>{esc(plan_path.stem)}</h3><pre>{esc(plan_path.read_text(encoding='utf-8').strip())}</pre>"
+            for plan_path in data["plan_paths"]
+        )
+    else:
+        plan_sections = "<p class='muted'>No citation plans created yet.</p>"
+
+    ai_usage = data["ai_usage"]
+    if ai_usage:
+        used_count = sum(1 for entry in ai_usage if entry.get("ai_used"))
+        refused_count = sum(1 for entry in ai_usage if entry.get("insufficient_evidence"))
+        grounded_count = sum(1 for entry in ai_usage if entry.get("grounding_fully_grounded") is True)
+        ungrounded_count = sum(1 for entry in ai_usage if entry.get("grounding_fully_grounded") is False)
+        ai_summary = (
+            f"<p>{len(ai_usage)} AI call(s) recorded against this workspace: {used_count} actually used an AI "
+            f"provider, {refused_count} correctly refused with insufficient evidence (no call made). Of the "
+            f"calls that used AI, {grounded_count} passed the deterministic grounding check fully and "
+            f"{ungrounded_count} had at least one citation flagged as not traceable to the supplied context "
+            "and require extra scrutiny before trusting. Every call required explicit per-request opt-in — "
+            "AI is never invoked automatically or in the background.</p>"
+        )
+        ai_rows = "".join(
+            f"<tr><td>{esc(entry.get('timestamp', ''))}</td><td>{esc(entry.get('kind', ''))}</td>"
+            f"<td>{'yes' if entry.get('ai_used') else 'no'}</td>"
+            f"<td>{'n/a' if entry.get('grounding_fully_grounded') is None else ('yes' if entry.get('grounding_fully_grounded') else 'no')}</td>"
+            f"<td>{esc(entry.get('model') or '')}</td></tr>"
+            for entry in ai_usage
+        )
+        ai_section = (
+            f"{ai_summary}<table><thead><tr><th>Timestamp</th><th>Kind</th><th>AI used</th>"
+            f"<th>Grounded</th><th>Model</th></tr></thead><tbody>{ai_rows}</tbody></table>"
+        )
+    else:
+        ai_section = "<p class='muted'>No AI features have been used in this workspace.</p>"
+
+    html_doc = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Supervisor Review Bundle</title>
+<style>{_SUPERVISOR_BUNDLE_HTML_STYLE}</style></head>
+<body>
+<h1>Supervisor Review Bundle</h1>
+<p class="muted">Generated: {esc(data['generated_at'])}</p>
+
+<h2>Claim Ledger</h2>
+<table><thead><tr><th>ID</th><th>Status</th><th>Citation gap</th><th>Sources</th><th>Issues</th><th>Text</th></tr></thead>
+<tbody>{claim_rows}</tbody></table>
+
+<h2>Citation Plans</h2>
+{plan_sections}
+
+<h2>Workspace Review Report</h2>
+<pre>{esc(data['workspace_report_path'].read_text(encoding='utf-8').strip())}</pre>
+
+<h2>AI Usage Disclosure</h2>
+{ai_section}
+</body></html>
+"""
+    html_path = output_dir / "supervisor-bundle.html"
+    html_path.write_text(html_doc, encoding="utf-8")
+    return html_path

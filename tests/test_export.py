@@ -3,7 +3,12 @@ from zipfile import ZipFile
 
 from ledgerly.core.yamlio import write_yaml
 from ledgerly.engine.claims import add_claim
-from ledgerly.engine.export import build_supervisor_bundle, export_accepted_source_corpus, export_evidence_bundle
+from ledgerly.engine.export import (
+    build_supervisor_bundle,
+    build_supervisor_bundle_html,
+    export_accepted_source_corpus,
+    export_evidence_bundle,
+)
 from ledgerly.engine.workspace import init_workspace
 
 
@@ -91,6 +96,7 @@ def test_build_supervisor_bundle_writes_digest_and_zip(tmp_path: Path) -> None:
     with ZipFile(bundle_path) as zf:
         names = set(zf.namelist())
     assert "supervisor-bundle.md" in names
+    assert "supervisor-bundle.html" in names
     assert "workspace-report.md" in names
     assert "claims-ledger.yaml" in names
     assert "ai-usage-ledger.yaml" in names
@@ -133,3 +139,33 @@ def test_build_supervisor_bundle_handles_no_claims(tmp_path: Path) -> None:
 
     assert bundle_path.is_file()
     assert "_none recorded yet_" in digest
+
+
+def test_build_supervisor_bundle_html_is_self_contained_and_escapes_content(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    add_claim(workspace, text="Claim with <script>alert('x')</script> in it.", linked_sources=["source-001"])
+
+    html_path = build_supervisor_bundle_html(workspace)
+    html_text = html_path.read_text(encoding="utf-8")
+
+    assert html_path.name == "supervisor-bundle.html"
+    assert html_text.startswith("<!doctype html>")
+    assert "<style>" in html_text  # inline CSS, no external stylesheet link
+    assert "<link " not in html_text
+    assert "<script>alert" not in html_text  # claim text must be escaped, not injected raw
+    assert "&lt;script&gt;" in html_text
+    assert "Supervisor Review Bundle" in html_text
+    assert "AI Usage Disclosure" in html_text
+
+
+def test_build_supervisor_bundle_html_handles_no_claims_or_ai_usage(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    html_path = build_supervisor_bundle_html(workspace)
+    html_text = html_path.read_text(encoding="utf-8")
+
+    assert "None recorded yet." in html_text
+    assert "No AI features have been used in this workspace." in html_text
+    assert "No citation plans created yet." in html_text
