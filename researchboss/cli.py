@@ -107,6 +107,10 @@ from researchboss.engine.project_log import (
     add_decision,
     add_feedback,
     add_terminology,
+    list_context_changes,
+    list_decisions,
+    list_feedback,
+    list_terminology,
     timeline_report,
 )
 from researchboss.engine.research_questions import (
@@ -3328,6 +3332,29 @@ def decisions_add(
         console.print(f"[green]Added[/green] {record['id']}")
 
 
+@decisions_app.command("list")
+def decisions_list(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List recorded decisions."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["decisions", "list"], ws, log_level)
+    rows = list_decisions(ws)
+    logger.info("Listed decisions", operation="decisions_list", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Decisions")
+    table.add_column("id")
+    table.add_column("decision")
+    table.add_column("reason")
+    for row in rows:
+        table.add_row(row.get("id", ""), row.get("decision", ""), row.get("reason", ""))
+    console.print(table)
+
+
 @terminology_app.command("add")
 def terminology_add(
     term: str = typer.Argument(...),
@@ -3344,6 +3371,28 @@ def terminology_add(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Updated[/green] {term}")
+
+
+@terminology_app.command("list")
+def terminology_list(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List glossary terms."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["terminology", "list"], ws, log_level)
+    rows = list_terminology(ws)
+    logger.info("Listed terminology", operation="terminology_list", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Terminology")
+    table.add_column("term")
+    table.add_column("definition")
+    for row in rows:
+        table.add_row(row.get("term", ""), row.get("definition", ""))
+    console.print(table)
 
 
 @feedback_app.command("add")
@@ -3364,6 +3413,30 @@ def feedback_add(
         console.print(f"[green]Added[/green] {record['id']}")
 
 
+@feedback_app.command("list")
+def feedback_list(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List supervisor/stakeholder feedback."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["feedback", "list"], ws, log_level)
+    rows = list_feedback(ws)
+    logger.info("Listed feedback", operation="feedback_list", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Feedback")
+    table.add_column("id")
+    table.add_column("source")
+    table.add_column("text")
+    table.add_column("status")
+    for row in rows:
+        table.add_row(row.get("id", ""), row.get("source", ""), row.get("text", ""), row.get("status", ""))
+    console.print(table)
+
+
 @context_app.command("add")
 def context_add(
     text: str = typer.Argument(...),
@@ -3379,6 +3452,28 @@ def context_add(
     _finish(summary, summary_path)
     if not quiet:
         console.print(f"[green]Added[/green] {record['id']}")
+
+
+@context_app.command("list")
+def context_list(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """List context changelog items."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["context", "list"], ws, log_level)
+    rows = list_context_changes(ws)
+    logger.info("Listed context changes", operation="context_list", count=len(rows))
+    _finish(summary, summary_path)
+    if quiet:
+        return
+    table = Table(title="Context changelog")
+    table.add_column("id")
+    table.add_column("text")
+    for row in rows:
+        table.add_row(row.get("id", ""), row.get("text", ""))
+    console.print(table)
 
 
 @zotero_app.command("collections")

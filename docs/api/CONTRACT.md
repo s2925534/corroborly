@@ -723,6 +723,16 @@ Engine source:
 
 ## Project Log Routes
 
+Every category here has both a `GET` list route and a `POST` add route. The `GET` routes were added 2026-07-16, alongside the web UI's Project Log panel — until then this area was POST-only with no way to read anything back via the API (the CLI had the same gap; `decisions list`/`terminology list`/`feedback list`/`context list` were added at the same time).
+
+### `GET /api/v1/decisions` (implemented)
+
+Lists recorded decisions as structured `{id, decision, reason}` records, parsed from `decisions.md`.
+
+Engine source:
+
+- `researchboss.engine.project_log.list_decisions`
+
 ### `POST /api/v1/decisions` (implemented)
 
 Adds a structured local decision.
@@ -730,6 +740,14 @@ Adds a structured local decision.
 Engine source:
 
 - `researchboss.engine.project_log.add_decision`
+
+### `GET /api/v1/terminology` (implemented)
+
+Lists glossary terms as `{term, definition}` records.
+
+Engine source:
+
+- `researchboss.engine.project_log.list_terminology`
 
 ### `POST /api/v1/terminology` (implemented)
 
@@ -739,6 +757,14 @@ Engine source:
 
 - `researchboss.engine.project_log.add_terminology`
 
+### `GET /api/v1/feedback` (implemented)
+
+Lists supervisor/stakeholder feedback as `{id, source, text, status}` records.
+
+Engine source:
+
+- `researchboss.engine.project_log.list_feedback`
+
 ### `POST /api/v1/feedback` (implemented)
 
 Adds supervisor or stakeholder feedback.
@@ -746,6 +772,14 @@ Adds supervisor or stakeholder feedback.
 Engine source:
 
 - `researchboss.engine.project_log.add_feedback`
+
+### `GET /api/v1/context/changelog` (implemented)
+
+Lists context changelog items as `{id, text}` records, parsed from `context-changelog.md`.
+
+Engine source:
+
+- `researchboss.engine.project_log.list_context_changes`
 
 ### `POST /api/v1/context/changelog` (implemented)
 

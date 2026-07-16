@@ -69,6 +69,8 @@ async function loadWorkspace(workspace) {
   refreshResearchQuestions();
   refreshArtefacts();
   refreshClaims();
+  refreshGuidelines();
+  refreshProjectLog();
 }
 
 async function loadUploadLimits() {
@@ -888,6 +890,268 @@ function setupCitationPanel() {
   document.getElementById("citation-apply-btn").addEventListener("click", applyCitationPlan);
 }
 
+// --- guidelines ---
+
+async function refreshGuidelines() {
+  const tbody = document.getElementById("guidelines-tbody");
+  const emptyEl = document.getElementById("guidelines-empty");
+  try {
+    const guidelines = await api("GET", "/api/v1/guidelines");
+    tbody.innerHTML = "";
+    emptyEl.hidden = guidelines.length > 0;
+    for (const guideline of guidelines) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td></td>
+        <td>${escapeHtml(guideline.title || "")}</td>
+        <td class="muted small">${escapeHtml((guideline.scopes || []).join(", "))}</td>
+      `;
+      const checkboxCell = tr.children[0];
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.guidelineId = guideline.id;
+      checkboxCell.appendChild(checkbox);
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    tbody.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
+async function registerGuideline() {
+  const messageEl = document.getElementById("guideline-register-message");
+  const source = document.getElementById("guideline-source-input").value.trim();
+  const title = document.getElementById("guideline-title-input").value.trim();
+  const scopesRaw = document.getElementById("guideline-scopes-input").value.trim();
+  const scopes = scopesRaw ? scopesRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!source) {
+    messageEl.textContent = "A source URL or local path is required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  messageEl.textContent = "Registering...";
+  try {
+    await api("POST", "/api/v1/guidelines", { json: { source, title: title || null, scopes } });
+    messageEl.textContent = "Registered.";
+    await refreshGuidelines();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function saveGuidelineDefaults() {
+  const messageEl = document.getElementById("guideline-report-message");
+  const checked = Array.from(document.querySelectorAll("#guidelines-tbody input[type=checkbox]:checked"));
+  const guidelineIds = checked.map((box) => box.dataset.guidelineId);
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  try {
+    await api("POST", "/api/v1/guidelines/defaults", { json: { guideline_ids: guidelineIds } });
+    messageEl.textContent = `Saved ${guidelineIds.length} default guideline(s).`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function showGuidelineConflicts() {
+  const messageEl = document.getElementById("guideline-report-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Checking...";
+  try {
+    const report = await api("GET", "/api/v1/guidelines/conflicts");
+    messageEl.textContent = `${report.conflict_count} conflict(s) found across ${report.guidelines_checked.length} guideline(s).`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function setupGuidelinesPanel() {
+  document.getElementById("guideline-register-btn").addEventListener("click", registerGuideline);
+  document.getElementById("guideline-save-defaults-btn").addEventListener("click", saveGuidelineDefaults);
+  document.getElementById("guideline-conflicts-btn").addEventListener("click", showGuidelineConflicts);
+}
+
+// --- project log: decisions, terminology, feedback, context changelog ---
+
+async function refreshProjectLog() {
+  await Promise.all([refreshDecisions(), refreshTerminology(), refreshFeedback(), refreshContextChanges()]);
+}
+
+async function refreshDecisions() {
+  const tbody = document.getElementById("decisions-tbody");
+  const emptyEl = document.getElementById("decisions-empty");
+  try {
+    const rows = await api("GET", "/api/v1/decisions");
+    tbody.innerHTML = rows
+      .map((row) => `<tr><td>${escapeHtml(row.decision || "")}</td><td class="muted small">${escapeHtml(row.reason || "")}</td></tr>`)
+      .join("");
+    emptyEl.hidden = rows.length > 0;
+  } catch (err) {
+    tbody.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
+async function addDecision() {
+  const messageEl = document.getElementById("decision-add-message");
+  const textInput = document.getElementById("decision-text-input");
+  const reasonInput = document.getElementById("decision-reason-input");
+  const text = textInput.value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!text) {
+    messageEl.textContent = "Decision text is required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  try {
+    await api("POST", "/api/v1/decisions", { json: { text, reason: reasonInput.value.trim() } });
+    textInput.value = "";
+    reasonInput.value = "";
+    messageEl.textContent = "Added.";
+    await refreshDecisions();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function refreshTerminology() {
+  const tbody = document.getElementById("terminology-tbody");
+  const emptyEl = document.getElementById("terminology-empty");
+  try {
+    const rows = await api("GET", "/api/v1/terminology");
+    tbody.innerHTML = rows
+      .map((row) => `<tr><td>${escapeHtml(row.term || "")}</td><td class="muted small">${escapeHtml(row.definition || "")}</td></tr>`)
+      .join("");
+    emptyEl.hidden = rows.length > 0;
+  } catch (err) {
+    tbody.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
+async function addTerminology() {
+  const messageEl = document.getElementById("terminology-add-message");
+  const termInput = document.getElementById("terminology-term-input");
+  const definitionInput = document.getElementById("terminology-definition-input");
+  const term = termInput.value.trim();
+  const definition = definitionInput.value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!term || !definition) {
+    messageEl.textContent = "Both a term and a definition are required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  try {
+    await api("POST", "/api/v1/terminology", { json: { term, definition } });
+    termInput.value = "";
+    definitionInput.value = "";
+    messageEl.textContent = "Added.";
+    await refreshTerminology();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function refreshFeedback() {
+  const tbody = document.getElementById("feedback-tbody");
+  const emptyEl = document.getElementById("feedback-empty");
+  try {
+    const rows = await api("GET", "/api/v1/feedback");
+    tbody.innerHTML = rows
+      .map(
+        (row) =>
+          `<tr><td class="muted small">${escapeHtml(row.source || "")}</td><td>${escapeHtml(row.text || "")}</td><td class="muted small">${escapeHtml(row.status || "")}</td></tr>`
+      )
+      .join("");
+    emptyEl.hidden = rows.length > 0;
+  } catch (err) {
+    tbody.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
+async function addFeedback() {
+  const messageEl = document.getElementById("feedback-add-message");
+  const textInput = document.getElementById("feedback-text-input");
+  const sourceInput = document.getElementById("feedback-source-input");
+  const text = textInput.value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!text) {
+    messageEl.textContent = "Feedback text is required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  try {
+    await api("POST", "/api/v1/feedback", { json: { text, source: sourceInput.value.trim() } });
+    textInput.value = "";
+    sourceInput.value = "";
+    messageEl.textContent = "Added.";
+    await refreshFeedback();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function refreshContextChanges() {
+  const tbody = document.getElementById("context-tbody");
+  const emptyEl = document.getElementById("context-empty");
+  try {
+    const rows = await api("GET", "/api/v1/context/changelog");
+    tbody.innerHTML = rows.map((row) => `<tr><td>${escapeHtml(row.text || "")}</td></tr>`).join("");
+    emptyEl.hidden = rows.length > 0;
+  } catch (err) {
+    tbody.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = err.message;
+  }
+}
+
+async function addContextChange() {
+  const messageEl = document.getElementById("context-add-message");
+  const textInput = document.getElementById("context-text-input");
+  const text = textInput.value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!text) {
+    messageEl.textContent = "Text is required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  try {
+    await api("POST", "/api/v1/context/changelog", { json: { text } });
+    textInput.value = "";
+    messageEl.textContent = "Added.";
+    await refreshContextChanges();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function setupProjectLogPanel() {
+  document.getElementById("decision-add-btn").addEventListener("click", addDecision);
+  document.getElementById("terminology-add-btn").addEventListener("click", addTerminology);
+  document.getElementById("feedback-add-btn").addEventListener("click", addFeedback);
+  document.getElementById("context-add-btn").addEventListener("click", addContextChange);
+}
+
 // --- localStorage: remember the last-used workspace path ---
 
 const LAST_WORKSPACE_KEY = "researchboss:lastWorkspace";
@@ -1104,6 +1368,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupRqAndArtefactPanels();
   setupClaimsPanel();
   setupCitationPanel();
+  setupGuidelinesPanel();
+  setupProjectLogPanel();
 
   const workspaceInput = document.getElementById("workspace-input");
   // Prefer an explicit ?workspace= URL param (e.g. from a bookmark or a

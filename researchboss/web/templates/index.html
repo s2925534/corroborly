@@ -163,6 +163,122 @@
   </section>
 
   <section class="panel">
+    <h2>Guidelines</h2>
+
+    <details id="guideline-register-details" class="detail-box">
+      <summary class="link">Register a guideline</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="guideline-source-input">Source (URL or local path)</label>
+        <input id="guideline-source-input" type="text" placeholder="https://... or /path/to/guideline.pdf">
+        <label class="field-label" for="guideline-title-input">Title (optional)</label>
+        <input id="guideline-title-input" type="text" placeholder="Leave blank for a default title">
+        <label class="field-label" for="guideline-scopes-input">Scopes (comma-separated, optional)</label>
+        <input id="guideline-scopes-input" type="text" placeholder="e.g. validation, citation, thesis">
+        <div class="zotero-link-actions">
+          <button id="guideline-register-btn" type="button">Register</button>
+        </div>
+        <p id="guideline-register-message" class="small" hidden></p>
+      </div>
+    </details>
+
+    <div class="zotero-link-actions">
+      <button id="guideline-save-defaults-btn" type="button" class="secondary">Save checked as defaults</button>
+      <button id="guideline-conflicts-btn" type="button" class="secondary">Conflict report</button>
+    </div>
+    <p id="guideline-report-message" class="small" hidden></p>
+
+    <table id="guidelines-table" class="data-table">
+      <thead>
+        <tr><th>Default</th><th>Title</th><th>Scopes</th></tr>
+      </thead>
+      <tbody id="guidelines-tbody"></tbody>
+    </table>
+    <p id="guidelines-empty" class="muted small" hidden>No guidelines registered yet.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Project log</h2>
+
+    <h3>Decisions</h3>
+    <details id="decision-add-details" class="detail-box">
+      <summary class="link">Add a decision</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="decision-text-input">Decision</label>
+        <input id="decision-text-input" type="text" placeholder="What was decided">
+        <label class="field-label" for="decision-reason-input">Reason (optional)</label>
+        <input id="decision-reason-input" type="text" placeholder="Why">
+        <div class="zotero-link-actions">
+          <button id="decision-add-btn" type="button">Add</button>
+        </div>
+        <p id="decision-add-message" class="small" hidden></p>
+      </div>
+    </details>
+    <table class="data-table">
+      <thead><tr><th>Decision</th><th>Reason</th></tr></thead>
+      <tbody id="decisions-tbody"></tbody>
+    </table>
+    <p id="decisions-empty" class="muted small" hidden>No decisions recorded yet.</p>
+
+    <h3>Terminology</h3>
+    <details id="terminology-add-details" class="detail-box">
+      <summary class="link">Add a term</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="terminology-term-input">Term</label>
+        <input id="terminology-term-input" type="text">
+        <label class="field-label" for="terminology-definition-input">Definition</label>
+        <input id="terminology-definition-input" type="text">
+        <div class="zotero-link-actions">
+          <button id="terminology-add-btn" type="button">Add</button>
+        </div>
+        <p id="terminology-add-message" class="small" hidden></p>
+      </div>
+    </details>
+    <table class="data-table">
+      <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+      <tbody id="terminology-tbody"></tbody>
+    </table>
+    <p id="terminology-empty" class="muted small" hidden>No terms recorded yet.</p>
+
+    <h3>Supervisor / stakeholder feedback</h3>
+    <details id="feedback-add-details" class="detail-box">
+      <summary class="link">Add feedback</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="feedback-text-input">Feedback</label>
+        <input id="feedback-text-input" type="text">
+        <label class="field-label" for="feedback-source-input">Source (optional)</label>
+        <input id="feedback-source-input" type="text" placeholder="e.g. Supervisor name">
+        <div class="zotero-link-actions">
+          <button id="feedback-add-btn" type="button">Add</button>
+        </div>
+        <p id="feedback-add-message" class="small" hidden></p>
+      </div>
+    </details>
+    <table class="data-table">
+      <thead><tr><th>Source</th><th>Feedback</th><th>Status</th></tr></thead>
+      <tbody id="feedback-tbody"></tbody>
+    </table>
+    <p id="feedback-empty" class="muted small" hidden>No feedback recorded yet.</p>
+
+    <h3>Context changelog</h3>
+    <details id="context-add-details" class="detail-box">
+      <summary class="link">Add a context change</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="context-text-input">What changed</label>
+        <textarea id="context-text-input" rows="3"></textarea>
+        <div class="zotero-link-actions">
+          <button id="context-add-btn" type="button">Add</button>
+        </div>
+        <p id="context-add-message" class="small" hidden></p>
+      </div>
+    </details>
+    <table class="data-table">
+      <thead><tr><th>Change</th></tr></thead>
+      <tbody id="context-tbody"></tbody>
+    </table>
+    <p id="context-empty" class="muted small" hidden>No context changes recorded yet.</p>
+  </section>
+
+  <section class="panel">
     <h2>Upload artefacts</h2>
     <p id="upload-limits" class="muted small"></p>
     <div id="dropzone" class="dropzone" tabindex="0">
