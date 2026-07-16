@@ -2113,6 +2113,39 @@ function setupModals() {
   });
 }
 
+// --- global keyboard shortcuts ---
+// Deliberately small and conservative: single unmodified keys, and only
+// while the workspace is loaded and focus isn't in a text field (so typing
+// a claim, note, etc. never triggers one by accident). Documented in the
+// About modal — keep that list in sync with this table.
+const KEYBOARD_SHORTCUTS = [
+  { key: "u", description: "Jump to Upload artefacts" },
+  { key: "?", description: "Show this shortcuts list (opens About)" },
+  { key: "Escape", description: "Close an open dialog" },
+];
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
+function setupKeyboardShortcuts() {
+  document.addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (isTypingTarget(event.target)) return;
+    if (document.getElementById("app-main").hidden) return;
+
+    if (event.key === "u") {
+      const dropzone = document.getElementById("dropzone");
+      dropzone.scrollIntoView({ behavior: "smooth", block: "center" });
+      dropzone.focus();
+    } else if (event.key === "?") {
+      openModal("about-modal");
+    }
+  });
+}
+
 // --- wiring ---
 
 function currentWorkspaceFromUrl() {
@@ -2293,6 +2326,7 @@ function setupCreateWorkspacePanel() {
 document.addEventListener("DOMContentLoaded", () => {
   setupDropzone();
   setupModals();
+  setupKeyboardShortcuts();
   setupZoteroPanel();
   setupSourcesPanel();
   setupCreateWorkspacePanel();

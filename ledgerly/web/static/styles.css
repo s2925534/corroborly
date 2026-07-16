@@ -265,6 +265,16 @@ main {
   border: 1px solid var(--border);
 }
 
+kbd {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-muted);
+  font-family: monospace;
+  font-size: 0.85em;
+}
+
 .modal-footer {
   padding: 0.9rem 1.1rem;
   border-top: 1px solid var(--border);
