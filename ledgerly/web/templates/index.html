@@ -18,6 +18,34 @@
 
 <p id="workspace-error" class="error banner" hidden></p>
 
+<div class="banner">
+  <details id="create-workspace-details" class="detail-box">
+    <summary class="link">Create a new workspace</summary>
+    <div class="source-scan-form">
+      <label class="field-label" for="create-ws-path-input">Workspace path (new or empty folder)</label>
+      <input id="create-ws-path-input" type="text" placeholder="/path/to/new/workspace">
+      <label class="field-label" for="create-ws-name-input">Project name</label>
+      <input id="create-ws-name-input" type="text" placeholder="e.g. My Thesis">
+      <label class="field-label" for="create-ws-type-select">Project type</label>
+      <select id="create-ws-type-select">
+        <option value="M.Phil">M.Phil</option>
+        <option value="PhD">PhD</option>
+        <option value="Other academic research">Other academic research</option>
+        <option value="Industry research">Industry research</option>
+        <option value="Custom">Custom</option>
+      </select>
+      <label class="field-label" for="create-ws-topic-input">Topic / short description</label>
+      <input id="create-ws-topic-input" type="text" placeholder="Optional">
+      <label class="field-label" for="create-ws-source-root-input">Source folder path (optional)</label>
+      <input id="create-ws-source-root-input" type="text" placeholder="Leave blank to configure later">
+      <div class="zotero-link-actions">
+        <button id="create-ws-btn" type="button">Create</button>
+      </div>
+      <p id="create-ws-message" class="small" hidden></p>
+    </div>
+  </details>
+</div>
+
 <main id="app-main" hidden>
   <section class="panel">
     <h2>Workspace dashboard</h2>
@@ -104,6 +132,27 @@
         <p id="artefact-create-message" class="small" hidden></p>
       </div>
     </details>
+
+    <details id="artefact-register-details" class="detail-box">
+      <summary class="link">Register an artefact created outside this tool</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="artefact-register-title-input">Title</label>
+        <input id="artefact-register-title-input" type="text">
+        <label class="field-label" for="artefact-register-type-input">Artefact type (free text)</label>
+        <input id="artefact-register-type-input" type="text" placeholder="e.g. supervisor-slides">
+        <label class="field-label" for="artefact-register-path-input">Path (relative to workspace or absolute)</label>
+        <input id="artefact-register-path-input" type="text" placeholder="e.g. artefacts/misc/slides.pdf">
+        <div class="zotero-link-actions">
+          <button id="artefact-register-btn" type="button">Register</button>
+        </div>
+        <p id="artefact-register-message" class="small" hidden></p>
+      </div>
+    </details>
+
+    <div class="zotero-link-actions">
+      <button id="artefact-dependencies-btn" type="button" class="secondary">Check dependencies</button>
+    </div>
+    <p id="artefact-dependencies-message" class="small" hidden></p>
 
     <table id="artefacts-table" class="data-table">
       <thead>

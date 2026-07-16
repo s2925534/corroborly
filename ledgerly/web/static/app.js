@@ -676,9 +676,50 @@ async function createArtefact() {
   }
 }
 
+async function registerArtefact() {
+  const messageEl = document.getElementById("artefact-register-message");
+  const title = document.getElementById("artefact-register-title-input").value.trim();
+  const artefactType = document.getElementById("artefact-register-type-input").value.trim();
+  const path = document.getElementById("artefact-register-path-input").value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!title || !artefactType || !path) {
+    messageEl.textContent = "Title, type, and path are all required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  messageEl.textContent = "Registering...";
+  try {
+    await api("POST", "/api/v1/artefacts", { json: { title, artefact_type: artefactType, path } });
+    messageEl.textContent = "Registered.";
+    await refreshArtefacts();
+    await refreshDashboard();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function checkArtefactDependencies() {
+  const messageEl = document.getElementById("artefact-dependencies-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Checking...";
+  try {
+    const report = await api("GET", "/api/v1/artefacts/dependencies");
+    const needsReview = report.artefacts.filter((row) => row.status !== "ok").length;
+    messageEl.textContent = `${report.artefacts.length} artefact(s) checked, ${needsReview} need review (missing/non-accepted linked source or unapproved linked research question).`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
 function setupRqAndArtefactPanels() {
   document.getElementById("rq-check-btn").addEventListener("click", checkRqReadiness);
   document.getElementById("artefact-create-btn").addEventListener("click", createArtefact);
+  document.getElementById("artefact-register-btn").addEventListener("click", registerArtefact);
+  document.getElementById("artefact-dependencies-btn").addEventListener("click", checkArtefactDependencies);
 }
 
 // --- claims ledger ---
@@ -1867,11 +1908,68 @@ function setWorkspaceInUrl(workspace) {
   window.history.replaceState({}, "", url.toString());
 }
 
+// --- create workspace (not gated behind an already-loaded workspace) ---
+
+async function createWorkspace() {
+  const messageEl = document.getElementById("create-ws-message");
+  const pathInput = document.getElementById("create-ws-path-input");
+  const nameInput = document.getElementById("create-ws-name-input");
+  const typeSelect = document.getElementById("create-ws-type-select");
+  const topicInput = document.getElementById("create-ws-topic-input");
+  const sourceRootInput = document.getElementById("create-ws-source-root-input");
+
+  const workspace = pathInput.value.trim();
+  const projectName = nameInput.value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!workspace || !projectName) {
+    messageEl.textContent = "Workspace path and project name are required.";
+    messageEl.classList.add("error");
+    return;
+  }
+  messageEl.textContent = "Creating...";
+  try {
+    const body = {
+      workspace,
+      project_name: projectName,
+      project_type: typeSelect.value,
+      topic: topicInput.value.trim(),
+    };
+    const sourceRoot = sourceRootInput.value.trim();
+    if (sourceRoot) {
+      body.source_root = sourceRoot;
+      body.source_mode = "local_folder";
+    }
+    const response = await fetch("/api/v1/projects/init", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const responseBody = await response.json();
+    if (!response.ok || !responseBody.ok) {
+      throw new Error((responseBody.errors && responseBody.errors[0] && responseBody.errors[0].message) || "Could not create workspace.");
+    }
+    messageEl.textContent = `Workspace created at ${responseBody.data.workspace}. Loading it now...`;
+    document.getElementById("workspace-input").value = responseBody.data.workspace;
+    setWorkspaceInUrl(responseBody.data.workspace);
+    await loadWorkspace(responseBody.data.workspace);
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function setupCreateWorkspacePanel() {
+  document.getElementById("create-ws-btn").addEventListener("click", createWorkspace);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   setupDropzone();
   setupModals();
   setupZoteroPanel();
   setupSourcesPanel();
+  setupCreateWorkspacePanel();
   setupRqAndArtefactPanels();
   setupClaimsPanel();
   setupCitationPanel();

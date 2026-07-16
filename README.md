@@ -1,6 +1,6 @@
 # Ledgerly
 
-Current version: 0.11.13
+Current version: 0.11.14
 
 Ledgerly is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 
