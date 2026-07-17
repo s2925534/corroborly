@@ -1,0 +1,53 @@
+name: Deploy to NAS
+
+# Runs after Tests succeeds on main, on a self-hosted runner registered for
+# this repo (mirrors ../zqx's deploy-api.yml/deploy-site.yml pattern exactly
+# -- see /Users/pedro/actions-runners/zqx for the working example this was
+# copied from). This project builds its Docker image from source on the NAS
+# (docker-compose.yml's `build: .`, not a registry image), so each deploy
+# re-uploads the current source and rebuilds remotely via `synology-site
+# deploy --force`, rather than the lighter `synology-site update` (pull +
+# restart) that ../zqx uses for its GHCR-image-based services -- `update`
+# only re-pulls/restarts whatever is already on the NAS, it does not sync
+# new source code, so it would silently redeploy stale code for this
+# source-build setup.
+#
+# Requires a self-hosted runner registered for s2925534/corroborly (none
+# exists yet as of 2026-07-17 -- registering one needs a live GitHub Actions
+# runner registration token, which is a credential-issuing action that
+# needs Pedro's explicit go-ahead before being generated/used, not something
+# to create automatically just because this workflow file exists). Until
+# then this workflow queues and waits; it does not run insecurely on a
+# GitHub-hosted runner, since deploying needs SSH/Tailscale access to the
+# NAS that only Pedro's own machine has.
+
+on:
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: self-hosted
+    steps:
+      - name: Fast-forward local checkout to the tested commit
+        # --ff-only, never --hard: fails loudly instead of discarding any
+        # uncommitted local work in this machine's working copy.
+        run: |
+          git -C /Users/pedro/Documents/_Projects/ResearchBoss fetch origin main
+          git -C /Users/pedro/Documents/_Projects/ResearchBoss checkout main
+          git -C /Users/pedro/Documents/_Projects/ResearchBoss merge --ff-only origin/main
+
+      - name: Deploy app.corroborly.com to the NAS
+        working-directory: /Users/pedro/Documents/_Projects/synology-site-deployer
+        run: |
+          .venv/bin/synology-site deploy app.corroborly.com \
+            --compose-file ../ResearchBoss/docker-compose.yml \
+            --env-file ../ResearchBoss/.env \
+            --source-dir ../ResearchBoss \
+            --port 5111 \
+            --health-path /health \
+            --container-name corroborly-api \
+            --force
