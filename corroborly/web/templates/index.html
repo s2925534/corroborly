@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Corroborly</title>
 <link rel="stylesheet" href="/static/styles.css">
+<script src="/static/theme.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -12,7 +13,14 @@
   <div class="workspace-bar">
     <input id="workspace-input" placeholder="Workspace path (e.g. /path/to/project)">
     <button id="workspace-load" type="button">Load</button>
-    <button id="theme-toggle-btn" type="button" class="secondary" title="Toggle dark/light theme">&#9788;</button>
+    <details id="theme-menu" class="theme-menu">
+      <summary class="secondary theme-menu-summary"><span class="theme-menu-label">Theme: System</span></summary>
+      <div class="theme-menu-panel">
+        <button type="button" class="theme-option" data-theme-value="light">Light</button>
+        <button type="button" class="theme-option" data-theme-value="dark">Dark</button>
+        <button type="button" class="theme-option" data-theme-value="system">System</button>
+      </div>
+    </details>
     <button id="logout-btn" type="button" class="secondary">Sign out</button>
   </div>
 </header>

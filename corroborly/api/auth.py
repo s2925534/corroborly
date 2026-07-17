@@ -9,6 +9,7 @@ from typing import Optional
 
 
 DEFAULT_SESSION_TTL_SECONDS = 12 * 60 * 60
+REMEMBER_ME_TTL_SECONDS = 30 * 24 * 60 * 60
 SESSION_COOKIE_NAME = "corroborly_session"
 
 _sessions: dict[str, float] = {}
@@ -72,9 +73,9 @@ def verify_credentials(username: str, password: str) -> bool:
     return username_ok and password_ok
 
 
-def create_session() -> tuple[str, float]:
+def create_session(ttl_seconds: Optional[int] = None) -> tuple[str, float]:
     token = secrets.token_urlsafe(32)
-    expires_at = time.time() + _session_ttl_seconds()
+    expires_at = time.time() + (ttl_seconds if ttl_seconds is not None else _session_ttl_seconds())
     _sessions[token] = expires_at
     return token, expires_at
 

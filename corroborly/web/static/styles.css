@@ -113,6 +113,84 @@ textarea {
   margin-top: 1rem;
 }
 
+.login-theme-menu {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+}
+
+.password-field {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.password-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.remember-me-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.remember-me-label input {
+  width: auto;
+}
+
+/* --- theme menu (light/dark/system) --- */
+.theme-menu {
+  position: relative;
+}
+
+.theme-menu-summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.theme-menu-summary::-webkit-details-marker {
+  display: none;
+}
+
+.theme-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.theme-menu-panel .theme-option {
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.theme-menu-panel .theme-option:hover {
+  background: var(--bg-muted);
+}
+
+.theme-menu-panel .theme-option.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* --- app shell --- */
 .topbar {
   display: flex;

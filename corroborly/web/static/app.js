@@ -9,38 +9,9 @@ const state = {
   uploads: [],
 };
 
-// --- theme (dark/light) ---
-// Applied immediately, not inside DOMContentLoaded, so there's no
-// flash-of-wrong-theme on load — `document.documentElement` (<html>)
-// already exists as soon as the script tag runs.
-
-const THEME_KEY = "corroborly:theme";
-
-function applyStoredTheme() {
-  try {
-    const stored = window.localStorage.getItem(THEME_KEY);
-    if (stored === "dark" || stored === "light") {
-      document.documentElement.setAttribute("data-theme", stored);
-    }
-  } catch (err) {
-    // Private browsing / storage disabled: fall back to system preference via CSS media query.
-  }
-}
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute("data-theme");
-  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const effectiveCurrent = current || (prefersDark ? "dark" : "light");
-  const next = effectiveCurrent === "dark" ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", next);
-  try {
-    window.localStorage.setItem(THEME_KEY, next);
-  } catch (err) {
-    // ignore
-  }
-}
-
-applyStoredTheme();
+// Theme (light/dark/system) logic lives in theme.js, shared with the login
+// page -- see that file for the get/apply/paint-immediately functions and
+// setupThemeMenu(). Wired up in the DOMContentLoaded handler below.
 
 function apiUrl(path, params = {}) {
   const url = new URL(path, window.location.origin);
@@ -3479,7 +3450,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (event.key === "Enter") document.getElementById("workspace-load").click();
   });
 
-  document.getElementById("theme-toggle-btn").addEventListener("click", toggleTheme);
+  setupThemeMenu("theme-menu");
   document.getElementById("compare-workspaces-btn").addEventListener("click", compareWorkspaces);
   document.getElementById("ai-readiness-btn").addEventListener("click", checkAiReadiness);
   document.getElementById("ai-run-btn").addEventListener("click", runAiAction);

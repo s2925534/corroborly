@@ -5,32 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Corroborly — Sign in</title>
 <link rel="stylesheet" href="/static/styles.css">
-<script>
-  // Respect a theme already chosen in the main app; no toggle here, keep the
-  // login page minimal. Falls back to the CSS prefers-color-scheme media
-  // query when nothing is stored yet.
-  try {
-    var storedTheme = window.localStorage.getItem("corroborly:theme");
-    if (storedTheme === "dark" || storedTheme === "light") {
-      document.documentElement.setAttribute("data-theme", storedTheme);
-    }
-  } catch (err) {}
-</script>
+<script src="/static/theme.js"></script>
 </head>
 <body class="login-body">
+<details id="theme-menu" class="theme-menu login-theme-menu">
+  <summary class="secondary theme-menu-summary"><span class="theme-menu-label">Theme: System</span></summary>
+  <div class="theme-menu-panel">
+    <button type="button" class="theme-option" data-theme-value="light">Light</button>
+    <button type="button" class="theme-option" data-theme-value="dark">Dark</button>
+    <button type="button" class="theme-option" data-theme-value="system">System</button>
+  </div>
+</details>
 <main class="login-card">
   <h1>Corroborly</h1>
   <p class="muted">Local-first, evidence-first research workspace.</p>
   <form id="login-form" autocomplete="off">
     <label for="username">Username</label>
-    <input type="text" id="username" name="username" required autofocus>
+    <input type="text" id="username" name="username" required autofocus autocomplete="username">
     <label for="password">Password</label>
-    <input type="password" id="password" name="password" required>
+    <div class="password-field">
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+      <button type="button" id="password-visibility-btn" class="secondary" tabindex="-1" title="Show password">Show</button>
+    </div>
+    <label class="remember-me-label">
+      <input type="checkbox" id="remember-me-checkbox"> Remember me for 30 days
+    </label>
     <button type="submit">Sign in</button>
     <p id="login-error" class="error" hidden></p>
   </form>
 </main>
 <script>
+  setupThemeMenu("theme-menu");
+
+  const passwordInput = document.getElementById("password");
+  const passwordVisibilityBtn = document.getElementById("password-visibility-btn");
+  passwordVisibilityBtn.addEventListener("click", () => {
+    const showing = passwordInput.type === "text";
+    passwordInput.type = showing ? "password" : "text";
+    passwordVisibilityBtn.textContent = showing ? "Show" : "Hide";
+    passwordVisibilityBtn.title = showing ? "Show password" : "Hide password";
+  });
+
   const nextUrl = {{ next | tojson }};
   const form = document.getElementById("login-form");
   const errorEl = document.getElementById("login-error");
@@ -38,13 +53,14 @@
     event.preventDefault();
     errorEl.hidden = true;
     const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
+    const password = passwordInput.value;
+    const remember = document.getElementById("remember-me-checkbox").checked;
     try {
       const response = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, remember }),
       });
       const body = await response.json();
       if (!response.ok || !body.ok) {

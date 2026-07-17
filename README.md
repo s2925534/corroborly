@@ -1,6 +1,6 @@
 # Corroborly
 
-Current version: 0.12.3
+Current version: 0.12.4
 
 Corroborly is a local-first, evidence-first research workspace for managing research context, source files, review state, and project memory without requiring cloud services for the MVP.
 

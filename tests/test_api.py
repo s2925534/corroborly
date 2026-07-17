@@ -1,5 +1,6 @@
 import io
 import os
+import time
 import wave
 from pathlib import Path
 
@@ -1495,6 +1496,25 @@ def test_login_success_grants_access_via_cookie(unauthenticated_client: TestClie
 
     status_response = unauthenticated_client.get("/api/v1/projects/status", params={"workspace": str(workspace)})
     assert status_response.status_code == 200
+
+
+def test_login_remember_me_grants_a_much_longer_session(unauthenticated_client: TestClient) -> None:
+    from corroborly.api.auth import DEFAULT_SESSION_TTL_SECONDS, REMEMBER_ME_TTL_SECONDS
+
+    default_response = unauthenticated_client.post(
+        "/api/v1/auth/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD}
+    )
+    remembered_response = unauthenticated_client.post(
+        "/api/v1/auth/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD, "remember": True}
+    )
+
+    default_expires = default_response.json()["data"]["expires_at"]
+    remembered_expires = remembered_response.json()["data"]["expires_at"]
+    now = time.time()
+
+    assert (default_expires - now) < DEFAULT_SESSION_TTL_SECONDS + 5
+    assert (remembered_expires - now) > DEFAULT_SESSION_TTL_SECONDS
+    assert (remembered_expires - now) < REMEMBER_ME_TTL_SECONDS + 5
 
 
 def test_login_success_grants_access_via_bearer_token(unauthenticated_client: TestClient, tmp_path: Path) -> None:

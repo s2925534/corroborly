@@ -7,6 +7,7 @@ from fastapi import APIRouter, Cookie, Header, Response
 from pydantic import BaseModel
 
 from corroborly.api.auth import (
+    REMEMBER_ME_TTL_SECONDS,
     SESSION_COOKIE_NAME,
     auth_configured,
     create_session,
@@ -23,6 +24,7 @@ router = APIRouter()
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember: bool = False
 
 
 @router.post("/login")
@@ -36,7 +38,7 @@ def login(payload: LoginRequest, response: Response) -> dict[str, Any]:
     if not verify_credentials(payload.username, payload.password):
         raise ApiError("invalid_credentials", "Incorrect username or password.", status_code=401)
 
-    token, expires_at = create_session()
+    token, expires_at = create_session(REMEMBER_ME_TTL_SECONDS if payload.remember else None)
     response.set_cookie(
         SESSION_COOKIE_NAME,
         token,
