@@ -1961,6 +1961,56 @@ def test_artefacts_cross_reference_unknown_upload_id_returns_404(client: TestCli
     assert response.json()["errors"][0]["code"] == "unknown_upload_id"
 
 
+def test_artefacts_cross_reference_ai_requires_ai_opt_in(client: TestClient, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    response = client.post(
+        "/api/v1/artefacts/cross-reference/ai",
+        params={"workspace": str(workspace)},
+        json={"upload_id": "upload-001"},
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] == "ai_not_enabled"
+
+
+def test_artefacts_cross_reference_ai_adds_validated_candidates_via_api(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    claim_response = client.post(
+        "/api/v1/claims", params={"workspace": str(workspace)}, json={"text": "Automation reduces turnaround time."}
+    )
+    claim_id = claim_response.json()["data"]["id"]
+
+    upload_response = client.post(
+        "/api/v1/artefacts/upload",
+        params={"workspace": str(workspace)},
+        files=[("files", ("notes.md", b"notes", "text/markdown"))],
+    )
+    upload_id = upload_response.json()["data"]["rows"][0]["upload_id"]
+
+    _mock_openai(
+        monkeypatch,
+        f"### CANDIDATE target_kind=claim target_id={claim_id}\nRATIONALE: Related.\n### END CANDIDATE\n",
+    )
+
+    response = client.post(
+        "/api/v1/artefacts/cross-reference/ai",
+        params={"workspace": str(workspace)},
+        json={"upload_id": upload_id, "ai": True},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["ai_used"] is True
+    assert data["ai_candidate_count"] == 1
+    assert any(c["target_id"] == claim_id for c in data["candidates"])
+
+
 def test_artefacts_cross_reference_apply_writes_only_approved_candidates_via_api(
     client: TestClient, tmp_path: Path
 ) -> None:

@@ -429,12 +429,14 @@ function renderCrossReferenceCandidates(candidates) {
   for (const candidate of candidates) {
     const row = document.createElement("div");
     row.className = "candidate-row";
+    const isAi = candidate.match_basis === "ai_suggested";
+    const matchDetail = isAi
+      ? `AI-suggested: ${escapeHtml(candidate.rationale || "")}`
+      : `matched: ${(candidate.matched_keywords || []).join(", ")}`;
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(candidate.target_title || candidate.target_id)}</strong>
-        <span class="muted small">(${escapeHtml(candidate.target_kind)}, matched: ${
-          (candidate.matched_keywords || []).join(", ")
-        })</span>
+        <span class="muted small">(${escapeHtml(candidate.target_kind)}, ${matchDetail})</span>
         <div>${statusBadgeHtml(candidate.review_status)}</div>
       </div>
       <div class="row-actions"></div>
@@ -467,6 +469,30 @@ async function reviewCandidate(candidate, reviewStatus) {
       "afterbegin",
       `<p class="error">${escapeHtml(err.message)}</p>`
     );
+  }
+}
+
+async function suggestCrossReferenceCandidatesWithAi() {
+  const messageEl = document.getElementById("crossref-ai-message");
+  const optedIn = document.getElementById("crossref-ai-opt-in-checkbox").checked;
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!optedIn) {
+    messageEl.textContent = "Check the consent box to send safe context to OpenAI.";
+    messageEl.classList.add("error");
+    return;
+  }
+  messageEl.textContent = "Suggesting (this sends bounded safe context to OpenAI)...";
+  try {
+    const report = await api("POST", "/api/v1/artefacts/cross-reference/ai", {
+      json: { upload_id: crossRefUploadId, ai: true },
+    });
+    messageEl.textContent = `Added ${report.ai_candidate_count} AI-suggested candidate(s). ${groundingBadgeHtml(report.grounding)}`;
+    document.getElementById("crossref-ai-opt-in-checkbox").checked = false;
+    renderCrossReferenceCandidates(report.candidates || []);
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
   }
 }
 
@@ -3222,4 +3248,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("about-link").addEventListener("click", () => openModal("about-modal"));
   document.getElementById("crossref-apply-btn").addEventListener("click", applyCrossReferenceLinks);
+  document.getElementById("crossref-ai-suggest-btn").addEventListener("click", suggestCrossReferenceCandidatesWithAi);
 });

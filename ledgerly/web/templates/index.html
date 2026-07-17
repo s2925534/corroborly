@@ -895,7 +895,12 @@
       <button type="button" class="close-btn" data-close="crossref-modal" aria-label="Close">&times;</button>
     </div>
     <div id="crossref-body" class="modal-body"></div>
+    <p id="crossref-ai-message" class="small" hidden></p>
     <div class="modal-footer">
+      <label class="field-label">
+        <input id="crossref-ai-opt-in-checkbox" type="checkbox"> Send safe context to OpenAI
+      </label>
+      <button id="crossref-ai-suggest-btn" type="button" class="secondary">Suggest more with AI</button>
       <button id="crossref-apply-btn" type="button">Apply accepted links</button>
     </div>
   </div>

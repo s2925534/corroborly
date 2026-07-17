@@ -271,3 +271,88 @@ def test_set_cross_reference_candidate_review_status_requires_candidates_report_
 
     with pytest.raises(ValueError, match="Run cross_reference_candidates first"):
         set_cross_reference_candidate_review_status(workspace, upload["upload_id"], "artefact", "artefact-001", "accepted")
+
+
+def test_ai_cross_reference_suggestions_returns_insufficient_evidence_without_calling_ai(tmp_path: Path) -> None:
+    from ledgerly.engine.ai import OpenAiCredentials
+    from ledgerly.engine.cross_reference import ai_cross_reference_suggestions
+
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "notes.md"
+    upload_source.write_text("notes", encoding="utf-8")
+    upload = intake_uploaded_artefact(workspace, upload_source, title="Notes")
+
+    def opener(request):
+        raise AssertionError("AI provider must not be called when there is no evidence to ground a response in")
+
+    report = ai_cross_reference_suggestions(
+        workspace, OpenAiCredentials(api_key="sk-secret"), upload["upload_id"], opener=opener
+    )
+
+    assert report["insufficient_evidence"] is True
+    assert report["ai_used"] is False
+
+
+def test_ai_cross_reference_suggestions_appends_validated_candidates_without_removing_deterministic_ones(
+    tmp_path: Path,
+) -> None:
+    import json
+    from ledgerly.engine.ai import OpenAiCredentials
+    from ledgerly.engine.cross_reference import ai_cross_reference_suggestions
+
+    workspace = _workspace(tmp_path)
+    upload_source = tmp_path / "berth-planning-notes.md"
+    upload_source.write_text("notes", encoding="utf-8")
+    upload = intake_uploaded_artefact(workspace, upload_source, title="Berth Planning Notes")
+
+    artefact_path = workspace / "artefacts" / "reports" / "summary.md"
+    artefact_path.parent.mkdir(parents=True, exist_ok=True)
+    artefact_path.write_text("# Summary", encoding="utf-8")
+    register_artefact(workspace, title="Berth Planning Summary", artefact_type="report", path=artefact_path)
+    claim = add_claim(workspace, text="Automation reduces turnaround time at container terminals.")
+
+    cross_reference_candidates(workspace, upload["upload_id"])  # deterministic pass first
+
+    class FakeResponse:
+        def __init__(self, data):
+            self.data = json.dumps(data).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return self.data
+
+    def opener(request):
+        return FakeResponse(
+            {
+                "id": "resp_xref",
+                "output_text": (
+                    f"### CANDIDATE target_kind=claim target_id={claim['id']}\n"
+                    "RATIONALE: The upload discusses the same automation topic.\n"
+                    "### END CANDIDATE\n"
+                    "### CANDIDATE target_kind=artefact target_id=artefact-999\n"
+                    "RATIONALE: A hallucinated artefact that does not exist.\n"
+                    "### END CANDIDATE\n"
+                ),
+            }
+        )
+
+    report = ai_cross_reference_suggestions(
+        workspace, OpenAiCredentials(api_key="sk-secret"), upload["upload_id"], opener=opener
+    )
+
+    assert report["ai_used"] is True
+    assert report["ai_candidate_count"] == 1  # the hallucinated artefact-999 was dropped
+    kinds_and_ids = {(c["target_kind"], c["target_id"]) for c in report["candidates"]}
+    assert ("artefact", None) not in kinds_and_ids
+    assert ("claim", claim["id"]) in kinds_and_ids
+    # Original deterministic candidate (matched by title overlap) survives alongside the AI one.
+    assert any(c["match_basis"] == "title_or_filename_keyword_overlap" for c in report["candidates"])
+    assert any(c["match_basis"] == "ai_suggested" for c in report["candidates"])
+
+    persisted = read_yaml(workspace / "outputs" / "recommendations" / f"cross-reference-{upload['upload_id']}.yaml")
+    assert persisted["ai_candidate_count"] == 1

@@ -77,6 +77,7 @@ from ledgerly.engine.database import (
 )
 from ledgerly.engine.db_backends.base import SecondaryBackendError
 from ledgerly.engine.cross_reference import (
+    ai_cross_reference_suggestions,
     apply_cross_reference_links,
     cross_reference_candidates,
     set_cross_reference_candidate_review_status,
@@ -3504,6 +3505,46 @@ def doc_cross_reference(
         report_path = ws / "outputs" / "recommendations" / f"cross-reference-{upload_id}.yaml"
         console.print(f"[green]Candidates report:[/green] {report_path}")
         console.print(f"Candidates: {len(report.get('candidates', []))}")
+
+
+@doc_app.command("cross-reference-ai")
+def doc_cross_reference_ai(
+    upload_id: str = typer.Argument(...),
+    ai: bool = typer.Option(False, "--ai", help="Required explicit opt-in for OpenAI cross-reference suggestions."),
+    max_sources: int = typer.Option(10, "--max-sources", help="Maximum accepted sources to include as safe context."),
+    max_excerpt_chars: int = typer.Option(1200, "--max-excerpt-chars", help="Maximum converted-text excerpt characters per source."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Add AI-suggested cross-reference candidates (from safe context only) to the same report `doc cross-reference` writes. Never applies links automatically."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["doc", "cross-reference-ai"], ws, log_level)
+    try:
+        require_ai_flag(ai)
+        report = ai_cross_reference_suggestions(
+            ws, openai_credentials(ws), upload_id, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars
+        )
+    except (OpenAiError, ValueError) as e:
+        logger.error("AI cross-reference suggestion failed", operation="doc_cross_reference_ai", upload_id=upload_id, error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+
+    logger.info(
+        "Added AI cross-reference suggestions",
+        operation="doc_cross_reference_ai",
+        upload_id=upload_id,
+        ai_candidate_count=report.get("ai_candidate_count", 0),
+    )
+    _finish(summary, summary_path)
+    if not quiet:
+        report_path = ws / "outputs" / "recommendations" / f"cross-reference-{upload_id}.yaml"
+        console.print(f"[green]Candidates report:[/green] {report_path}")
+        console.print(f"AI-suggested candidates: {report.get('ai_candidate_count', 0)}")
+        _print_ai_review_footer(report, "Human review is required before using this output.")
 
 
 @doc_app.command("cross-reference-review")

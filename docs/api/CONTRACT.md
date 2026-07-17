@@ -477,6 +477,20 @@ Engine source:
 
 CLI equivalent: `ledgerly doc cross-reference <upload_id>`.
 
+### `POST /api/v1/artefacts/cross-reference/ai` (implemented, 2026-07-17)
+
+Adds AI-suggested cross-reference candidates to the same report the route above writes — additive, not a replacement for the deterministic keyword-overlap candidates. Requires `ai: true` (`400 ai_not_enabled`). Uses safe context only (accepted-source excerpts, existing artefact titles, claim text) plus the upload's own title/filename — never the uploaded file's own content. Every proposed `target_kind`/`target_id` is validated against the real workspace; an invented ID is silently dropped, never trusted. `404 unknown_upload_id` for an unknown upload.
+
+Request body: `{"upload_id": str, "ai": true, "max_sources": int = 10, "max_excerpt_chars": int = 1200}`.
+
+Response `data`: the same shape as the deterministic route, plus `ai_used: true`, `ai_candidate_count`, `model`, `response_id`, `grounding`. `candidates` now contains both deterministic (`match_basis: "title_or_filename_keyword_overlap"` / `"claim_text_keyword_overlap"`) and AI-suggested (`match_basis: "ai_suggested"`, with a `rationale` field instead of `matched_keywords`) entries.
+
+Engine source:
+
+- `ledgerly.engine.cross_reference.ai_cross_reference_suggestions`
+
+CLI equivalent: `ledgerly doc cross-reference-ai <upload_id> --ai`.
+
 ### `POST /api/v1/artefacts/cross-reference/candidate-review` (implemented)
 
 Sets one candidate's `review_status` (`needs_human_review`/`accepted`/`approved`/`rejected`, identified by `target_kind`+`target_id` in the JSON body, `upload_id` as a query param) in the persisted candidates report. `cross_reference_candidates`/`apply_cross_reference_links` were designed around a human hand-editing the report YAML on disk, which a browser-based reviewer has no way to do — found missing during Phase 10 UI planning for the cross-reference review overlay (see the Phase 10 TODO items). Citation plans had the identical gap; see `POST /api/v1/citations/plan/insertion-review` below, added the same way. `404 cross_reference_review_failed` for an unknown `upload_id` or an unmatched candidate; `400 cross_reference_review_failed` for an invalid `review_status` value.

@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from urllib.request import Request
 
 from ledgerly.core.yamlio import read_yaml, write_yaml
+from ledgerly.engine.ai import (
+    OpenAiCredentials,
+    build_safe_context,
+    citation_instruction,
+    default_openai_model,
+    extract_response_text,
+    openai_post,
+    record_ai_usage,
+)
 from ledgerly.engine.artefacts import list_artefacts
 from ledgerly.engine.claims import list_claims
+from ledgerly.engine.grounding import validate_grounding
 from ledgerly.engine.sources import list_sources
 from ledgerly.engine.vault import add_cross_references_to_upload, list_uploaded_artefacts
 
@@ -52,6 +64,132 @@ def cross_reference_candidates(workspace: Path, upload_id: str) -> dict[str, Any
     }
     write_yaml(workspace / "outputs" / "recommendations" / f"cross-reference-{upload_id}.yaml", report)
     return report
+
+
+_CANDIDATE_BLOCK_RE = re.compile(
+    r"###\s*CANDIDATE\s+target_kind=(?P<target_kind>\S+)\s+target_id=(?P<target_id>\S+)\s*\n"
+    r"RATIONALE:\s*(?P<rationale>.*?)\s*\n"
+    r"###\s*END CANDIDATE",
+    re.DOTALL,
+)
+
+
+def _valid_targets(workspace: Path) -> dict[str, dict[str, str]]:
+    """`{target_kind: {target_id: target_title}}` for every real artefact,
+    source, and claim in the workspace -- the ground truth
+    `ai_cross_reference_suggestions` validates every AI-proposed candidate
+    against, so a model can never silently invent a target that doesn't
+    exist.
+    """
+    targets: dict[str, dict[str, str]] = {"artefact": {}, "source": {}, "claim": {}}
+    for artefact in list_artefacts(workspace):
+        if artefact.get("id"):
+            targets["artefact"][str(artefact["id"])] = str(artefact.get("title") or artefact["id"])
+    for source in list_sources(workspace):
+        if source.get("source_id"):
+            metadata = source.get("citation_metadata") if isinstance(source.get("citation_metadata"), dict) else {}
+            title = source.get("zotero_title") or metadata.get("title") or source.get("file_name") or source["source_id"]
+            targets["source"][str(source["source_id"])] = str(title)
+    for claim in list_claims(workspace):
+        if claim.get("id"):
+            targets["claim"][str(claim["id"])] = str(claim.get("text") or claim["id"])[:120]
+    return targets
+
+
+def ai_cross_reference_suggestions(
+    workspace: Path,
+    credentials: OpenAiCredentials,
+    upload_id: str,
+    *,
+    max_sources: int = 10,
+    max_excerpt_chars: int = 1200,
+    opener: Callable[[Request], Any] | None = None,
+) -> dict[str, Any]:
+    """Add AI-suggested cross-reference candidates to the same report
+    `cross_reference_candidates` writes, from safe context only (accepted-
+    source excerpts, artefact titles, and claim text -- never the uploaded
+    file's own content, which isn't converted/extracted by this feature at
+    all). Every suggestion is validated against the real workspace (an
+    invented `target_id` is dropped, not silently trusted) and the whole
+    response is grounding-checked. Additive only: existing deterministic
+    keyword-overlap candidates are kept untouched; AI candidates are
+    appended with `match_basis: "ai_suggested"` and their own
+    `review_status: needs_human_review` -- nothing is ever written or
+    applied automatically, the same propose-then-apply boundary
+    `apply_cross_reference_links` already enforces for the deterministic
+    candidates.
+    """
+    upload = _find_upload(workspace, upload_id)
+    report_path = workspace / "outputs" / "recommendations" / f"cross-reference-{upload_id}.yaml"
+    report = read_yaml(report_path) if report_path.is_file() else cross_reference_candidates(workspace, upload_id)
+    existing_candidates = [item for item in report.get("candidates", []) if isinstance(item, dict)]
+
+    context = build_safe_context(workspace, max_sources=max_sources, max_excerpt_chars=max_excerpt_chars)
+    valid_targets = _valid_targets(workspace)
+    claims = list_claims(workspace)
+    artefacts = [{"id": a.get("id"), "title": a.get("title")} for a in list_artefacts(workspace) if a.get("id")]
+
+    if not context["has_evidence"] and not claims and not artefacts:
+        empty_report = dict(report)
+        empty_report["ai_used"] = False
+        empty_report["insufficient_evidence"] = True
+        empty_report["insufficient_evidence_reason"] = (
+            "No accepted source excerpt, claim, or artefact exists in this workspace -- nothing to ground an "
+            "AI cross-reference suggestion in."
+        )
+        empty_report["grounding"] = None
+        write_yaml(report_path, empty_report)
+        return record_ai_usage(workspace, {**empty_report, "kind": "ai_cross_reference_suggestions"})
+
+    model = default_openai_model(workspace)
+    prompt = (
+        "You are suggesting cross-reference links for one uploaded artefact in a local-first, evidence-first "
+        "research workspace. Given the upload's title/filename and the safe context below (accepted source "
+        "excerpts, existing artefact titles, and claim text), propose candidate links to existing artefacts, "
+        "sources, or claims that appear genuinely related. Use exactly this format, one block per candidate:\n\n"
+        "### CANDIDATE target_kind=<artefact|source|claim> target_id=<id>\n"
+        "RATIONALE: <why this link is plausible>\n"
+        "### END CANDIDATE\n\n"
+        "Only use target_id values that appear in the target map below -- never invent one. If nothing is "
+        "genuinely related, propose no candidates at all.\n\n"
+        f"{citation_instruction()}\n\n"
+        f"Upload: {upload.get('title') or upload.get('original_file_name')}\n\n"
+        f"Target map JSON:\n{json.dumps(valid_targets, ensure_ascii=False, indent=2)}\n\n"
+        f"Claim ledger JSON:\n{json.dumps(claims, ensure_ascii=False, indent=2)}\n\n"
+        f"Safe context JSON:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
+    )
+    response = openai_post("responses", credentials, {"model": model, "input": prompt}, opener=opener)
+    text = extract_response_text(response)
+
+    ai_candidates = []
+    for match in _CANDIDATE_BLOCK_RE.finditer(text or ""):
+        target_kind = match.group("target_kind").strip()
+        target_id = match.group("target_id").strip()
+        rationale = match.group("rationale").strip()
+        if target_id not in valid_targets.get(target_kind, {}):
+            continue  # never trust an invented or mismatched-kind target
+        ai_candidates.append(
+            {
+                "target_kind": target_kind,
+                "target_id": target_id,
+                "target_title": valid_targets[target_kind][target_id],
+                "matched_keywords": [],
+                "match_basis": "ai_suggested",
+                "rationale": rationale,
+                "review_status": "needs_human_review",
+            }
+        )
+
+    merged_candidates = existing_candidates + ai_candidates
+    report["candidates"] = merged_candidates
+    report["candidate_count"] = len(merged_candidates)
+    report["ai_used"] = True
+    report["ai_candidate_count"] = len(ai_candidates)
+    report["model"] = model
+    report["response_id"] = response.get("id") if isinstance(response, dict) else None
+    report["grounding"] = validate_grounding(text, context=context, claims=claims)
+    write_yaml(report_path, report)
+    return record_ai_usage(workspace, {**report, "kind": "ai_cross_reference_suggestions"})
 
 
 def set_cross_reference_candidate_review_status(

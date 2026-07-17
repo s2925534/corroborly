@@ -2459,6 +2459,47 @@ def test_cli_doc_cross_reference_and_apply(tmp_path: Path) -> None:
     assert ledger["uploads"][0]["cross_references"][0]["target_kind"] == "artefact"
 
 
+def test_cli_doc_cross_reference_ai_requires_ai_flag(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+
+    result = runner.invoke(app, ["doc", "cross-reference-ai", "upload-001", "--workspace", str(workspace), "--quiet"])
+    assert result.exit_code == 2
+
+
+def test_cli_doc_cross_reference_ai_adds_validated_candidates(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")
+    (workspace / ".env").write_text("OPENAI_API_KEY=sk-secret\n", encoding="utf-8")
+
+    claim_result = runner.invoke(
+        app, ["claims", "add", "Automation reduces turnaround time.", "--workspace", str(workspace), "--quiet"]
+    )
+    assert claim_result.exit_code == 0, claim_result.output
+    claim_id = read_yaml(workspace / "claims-ledger.yaml")["claims"][0]["id"]
+
+    upload_source = tmp_path / "incoming" / "notes.md"
+    upload_source.parent.mkdir(parents=True, exist_ok=True)
+    upload_source.write_text("# Notes", encoding="utf-8")
+    runner.invoke(app, ["doc", "upload", str(upload_source), "--title", "Notes", "--workspace", str(workspace)])
+
+    _mock_openai_for_cli(
+        monkeypatch,
+        f"### CANDIDATE target_kind=claim target_id={claim_id}\n"
+        "RATIONALE: Related topic.\n"
+        "### END CANDIDATE\n",
+    )
+
+    result = runner.invoke(
+        app, ["doc", "cross-reference-ai", "upload-001", "--ai", "--workspace", str(workspace), "--quiet"]
+    )
+    assert result.exit_code == 0, result.output
+
+    report = read_yaml(workspace / "outputs" / "recommendations" / "cross-reference-upload-001.yaml")
+    assert report["ai_candidate_count"] == 1
+    assert any(c["target_id"] == claim_id for c in report["candidates"])
+
+
 def test_cli_doc_cross_reference_unknown_upload_id(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test Project", project_type="M.Phil", topic="")

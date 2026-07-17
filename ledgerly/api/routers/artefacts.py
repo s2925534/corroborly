@@ -19,7 +19,9 @@ from ledgerly.engine.artefacts import (
     register_artefact,
     set_artefact_review_status,
 )
+from ledgerly.engine.ai import OpenAiError, openai_credentials
 from ledgerly.engine.cross_reference import (
+    ai_cross_reference_suggestions,
     apply_cross_reference_links,
     cross_reference_candidates,
     set_cross_reference_candidate_review_status,
@@ -249,6 +251,43 @@ def artefacts_cross_reference(
     """
     try:
         report = cross_reference_candidates(workspace, upload_id)
+    except ValueError as exc:
+        raise ApiError("unknown_upload_id", str(exc), status_code=404) from exc
+    return ok(report)
+
+
+class AiCrossReferenceRequest(BaseModel):
+    upload_id: str
+    ai: bool = False
+    max_sources: int = 10
+    max_excerpt_chars: int = 1200
+
+
+@router.post("/cross-reference/ai")
+def artefacts_cross_reference_ai(
+    payload: AiCrossReferenceRequest, workspace: Path = Depends(resolve_workspace)
+) -> dict[str, Any]:
+    """Add AI-suggested cross-reference candidates (from safe context only --
+    accepted-source excerpts, artefact titles, claim text; never the
+    uploaded file's own content) to the same report `/cross-reference`
+    writes. Requires `ai: true`. Never applies links automatically -- every
+    AI candidate still needs the same review-then-apply step as the
+    deterministic ones.
+    """
+    if not payload.ai:
+        raise ApiError("ai_not_enabled", 'Set "ai": true to explicitly opt in to this AI action.', status_code=400)
+    try:
+        credentials = openai_credentials(workspace)
+    except OpenAiError as exc:
+        raise ApiError("openai_not_configured", str(exc), status_code=503) from exc
+    try:
+        report = ai_cross_reference_suggestions(
+            workspace,
+            credentials,
+            payload.upload_id,
+            max_sources=payload.max_sources,
+            max_excerpt_chars=payload.max_excerpt_chars,
+        )
     except ValueError as exc:
         raise ApiError("unknown_upload_id", str(exc), status_code=404) from exc
     return ok(report)
