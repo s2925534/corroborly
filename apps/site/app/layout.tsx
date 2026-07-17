@@ -15,8 +15,9 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.corroborly.com"),
-  title: "Corroborly",
-  description: "Evidence, corroborated. Site under construction.",
+  title: "Corroborly — Evidence, corroborated",
+  description:
+    "A small family of open, local-first research tools: Folio (evidence-first research workspace), ResearchCatalogue (deterministic file cataloguing), and SourceScribe (local transcription). Deterministic by default; AI is explicit opt-in only.",
 };
 
 export default function RootLayout({
