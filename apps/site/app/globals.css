@@ -369,3 +369,37 @@ main {
 .site-footer-note a {
   text-decoration: underline;
 }
+
+.site-signature {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  display: inline-flex;
+  gap: 4px;
+  padding: 0.4rem 0.5rem;
+  background: #0b0b0b;
+  border-radius: 0.375rem;
+  opacity: 0.45;
+  z-index: 10;
+}
+
+.site-signature:hover {
+  opacity: 0.85;
+}
+
+.site-signature__byte {
+  display: grid;
+  grid-template-rows: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.site-signature__dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  border: 1px solid #ffffff;
+}
+
+.site-signature__dot--one {
+  background: #ffffff;
+}
