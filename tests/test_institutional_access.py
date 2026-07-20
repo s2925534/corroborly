@@ -32,6 +32,8 @@ class FakeLocator:
         self._count = count
         self._download = download
         self.page = None
+        self.click_calls = 0
+        self.fill_calls: list[str] = []
 
     @property
     def first(self):
@@ -41,8 +43,12 @@ class FakeLocator:
         return self._count
 
     def click(self, timeout=None):
+        self.click_calls += 1
         if self._download is not None:
             self.page._last_download = self._download
+
+    def fill(self, text):
+        self.fill_calls.append(text)
 
 
 class _ExpectDownloadCM:
@@ -254,6 +260,58 @@ def test_fetch_full_text_reports_not_accessible_when_no_pdf_link_found(tmp_path)
 
     assert result.status == "not_accessible"
     assert "no downloadable PDF" in result.message
+
+
+def test_fetch_full_text_attempts_institutional_login_handoff_before_pdf_search(tmp_path):
+    institutional_profile_dir(tmp_path).mkdir(parents=True)
+    download = FakeDownload(filename="handoff-paper.pdf")
+    login_button = FakeLocator(count=1)
+    search_input = FakeLocator(count=1)
+    qut_option = FakeLocator(count=1)
+    page = FakePage(
+        selector_matches={
+            "a:has-text('Institutional login')": login_button,
+            "input[placeholder*='institution' i]": search_input,
+            "text=Queensland University of Technology - QUT": qut_option,
+            "a[href$='.pdf']": FakeLocator(count=1, download=download),
+        },
+    )
+    factory = _fake_playwright_factory(page)
+
+    result = fetch_full_text("https://example.com/article", tmp_path, playwright_factory=factory)
+
+    assert result.status == "downloaded"
+    assert login_button.click_calls == 1
+    assert search_input.fill_calls == ["Queensland University of Technology"]
+    assert qut_option.click_calls == 1
+
+
+def test_fetch_full_text_skips_handoff_when_no_institutional_trigger_present(tmp_path):
+    institutional_profile_dir(tmp_path).mkdir(parents=True)
+    search_input = FakeLocator(count=1)
+    page = FakePage(selector_matches={"input[placeholder*='institution' i]": search_input})
+    factory = _fake_playwright_factory(page)
+
+    fetch_full_text("https://example.com/article", tmp_path, playwright_factory=factory)
+
+    # No institutional-login trigger matched, so the handoff must not touch
+    # the search box or anything past it.
+    assert search_input.fill_calls == []
+
+
+def test_fetch_full_text_hints_at_session_expiry_when_still_on_login_page(tmp_path):
+    institutional_profile_dir(tmp_path).mkdir(parents=True)
+    page = FakePage(
+        url="https://idp.qut.edu.au/openathens/login",
+        html="<html><body>Please sign in to continue.</body></html>",
+    )
+    factory = _fake_playwright_factory(page)
+
+    result = fetch_full_text("https://example.com/article", tmp_path, playwright_factory=factory)
+
+    assert result.status == "not_accessible"
+    assert "institutional login" in result.message.lower()
+    assert "session may have expired" in result.message.lower()
 
 
 def test_fetch_full_text_reports_not_accessible_on_navigation_failure(tmp_path):

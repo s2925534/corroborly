@@ -17,11 +17,20 @@ Instead this module follows a "login once, reuse the session" pattern:
      session file this module manages, parses, or could leak a password
      through.
   2. `fetch_full_text()` reuses that same persistent profile (headless by
-     default) to visit a target article URL and look for a downloadable PDF
-     using a small set of common publisher page patterns. If nothing is
-     found -- paywalled, no recognizable PDF link, unusual page layout --
-     it returns a `not_accessible` result with a concrete next step instead
-     of failing silently or guessing at a URL.
+     default) to visit a target article URL. Per QUT Library's own
+     documented flow, many publisher/database sites require an extra
+     per-site step even after step 1: click their own "institutional
+     login" / "Shibboleth" / "OpenAthens" button, then pick "Queensland
+     University of Technology - QUT" from an institution search. Since the
+     persistent profile already carries an authenticated OpenAthens/
+     Shibboleth session, this handoff normally completes without prompting
+     for credentials again -- it's just navigating UI, not logging in from
+     scratch. `fetch_full_text()` attempts this handoff automatically
+     before looking for a downloadable PDF using a small set of common
+     publisher page patterns. If nothing is found -- paywalled, no
+     recognizable PDF link, unusual page layout, or the saved session has
+     actually expired -- it returns a `not_accessible` result with a
+     concrete next step instead of failing silently or guessing at a URL.
 
 This is deliberately best-effort: publisher page layouts vary too much for
 a universal PDF-download detector, and this module does not attempt to
@@ -57,6 +66,38 @@ _PDF_LINK_SELECTORS = [
     "link[type='application/pdf']",
 ]
 
+# Per QUT's "Institutional sign-in via OpenAthens" guide: publishers expose
+# their own trigger for this, sometimes branded OpenAthens, sometimes
+# Shibboleth, sometimes just "institutional"/"organisational" sign-in.
+_INSTITUTIONAL_LOGIN_TRIGGER_SELECTORS = [
+    "a:has-text('Institutional login')",
+    "a:has-text('Institution login')",
+    "button:has-text('Institutional login')",
+    "button:has-text('Institution login')",
+    "a:has-text('Access through your institution')",
+    "a:has-text('Sign in via your institution')",
+    "a:has-text('Sign in via your organisation')",
+    "a:has-text('Sign in via your organization')",
+    "a:has-text('Shibboleth')",
+    "a:has-text('OpenAthens')",
+    "button:has-text('OpenAthens')",
+    "a:has-text('Institutional Sign In')",
+]
+
+# After the trigger, most publishers show a "find your institution" search
+# box (a WAYF -- Where Are You From -- style picker).
+_INSTITUTION_SEARCH_INPUT_SELECTORS = [
+    "input[placeholder*='institution' i]",
+    "input[placeholder*='organisation' i]",
+    "input[placeholder*='organization' i]",
+]
+
+_QUT_OPTION_SELECTORS = [
+    "text=Queensland University of Technology - QUT",
+    "text=Queensland University of Technology",
+    "text=QUT",
+]
+
 _PAYWALL_PHRASES = [
     "purchase this article",
     "buy this article",
@@ -66,6 +107,11 @@ _PAYWALL_PHRASES = [
     "purchase pdf",
     "rent this article",
 ]
+
+# If we're still sitting on something that looks like a sign-in/IdP page
+# after attempting the institutional-login handoff, the saved session has
+# most likely expired rather than the article being genuinely inaccessible.
+_LOGIN_PAGE_URL_HINTS = ["login", "signin", "sign-in", "sso.", "openathens", "shibboleth", "authenticate", "idp."]
 
 
 class InstitutionalAccessError(RuntimeError):
@@ -142,6 +188,58 @@ def ensure_institutional_login(
     logger.info("Institutional login session saved to %s", profile_dir)
 
 
+def _try_institutional_login_handoff(page: Any, *, timeout_ms: int) -> bool:
+    """Best-effort: click a publisher's own institutional-login trigger, then
+    pick QUT from whatever institution search/picker appears. Returns
+    whether a trigger was found and clicked at all (not whether the handoff
+    actually succeeded -- that's inferred afterward from page state)."""
+    triggered = False
+    for selector in _INSTITUTIONAL_LOGIN_TRIGGER_SELECTORS:
+        locator = page.locator(selector).first
+        try:
+            if locator.count() == 0:
+                continue
+        except Exception:
+            continue
+        try:
+            locator.click(timeout=timeout_ms)
+            triggered = True
+        except Exception:
+            continue
+        break
+
+    if not triggered:
+        return False
+
+    for selector in _INSTITUTION_SEARCH_INPUT_SELECTORS:
+        locator = page.locator(selector).first
+        try:
+            if locator.count() == 0:
+                continue
+        except Exception:
+            continue
+        try:
+            locator.fill("Queensland University of Technology")
+        except Exception:
+            pass
+        break
+
+    for selector in _QUT_OPTION_SELECTORS:
+        locator = page.locator(selector).first
+        try:
+            if locator.count() == 0:
+                continue
+        except Exception:
+            continue
+        try:
+            locator.click(timeout=timeout_ms)
+        except Exception:
+            continue
+        break
+
+    return True
+
+
 def fetch_full_text(
     target_url: str,
     workspace: Path,
@@ -191,6 +289,7 @@ def fetch_full_text(
                     ),
                 )
 
+            _try_institutional_login_handoff(page, timeout_ms=timeout_ms)
             resolved_url = page.url
 
             for selector in _PDF_LINK_SELECTORS:
@@ -222,7 +321,16 @@ def fetch_full_text(
             context.close()
 
     paywalled = any(phrase in page_text for phrase in _PAYWALL_PHRASES)
-    reason = "a paywall/login prompt was detected" if paywalled else "no downloadable PDF link was found on the page"
+    looks_like_login_page = any(hint in (resolved_url or "").lower() for hint in _LOGIN_PAGE_URL_HINTS)
+    if looks_like_login_page:
+        reason = (
+            "the resolved page still looks like an institutional sign-in page (your saved "
+            "session may have expired -- try `corroborly institutional login` again)"
+        )
+    elif paywalled:
+        reason = "a paywall/login prompt was detected"
+    else:
+        reason = "no downloadable PDF link was found on the page"
     return FullTextResult(
         status="not_accessible",
         target_url=target_url,
