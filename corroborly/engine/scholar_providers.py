@@ -1,8 +1,7 @@
-"""Google Scholar data provider layer with a sequential fallback pipeline.
+"""Academic-search data provider layer with a sequential fallback pipeline.
 
-There is no official Google Scholar API. `ScholarDataService.search()` tries
-a sequence of backends in order and returns the first one that completes
-without raising:
+`ScholarDataService.search()` tries a sequence of backends in order and
+returns the first one that completes without raising:
 
   1. SerpApi's Google Scholar engine (structured JSON, needs SERPAPI_API_KEY)
   2. Semantic Scholar's official Graph API (free, works without a key)
@@ -10,11 +9,20 @@ without raising:
      Google Scholar directly and can be IP-blocked/rate-limited)
   4. ScholarAPI (scholarapi.net) -- currently a stub, see
      `_fetch_scholarapi_net` for why
+  5. OpenAlex's Works API (free, no key required)
+  6. Crossref's Works API (free, no key required, strong DOI metadata)
+  7. arXiv's Atom-feed API (free, no key required, preprints)
+
+Options 5-7 are keyless, unrestricted, and highly available, so they act as
+the last-resort fallback tier: if every paid/scraped/stubbed option above
+fails or lacks credentials, the pipeline still returns real results instead
+of an empty response.
 
 This module is intentionally self-contained: it does not import from, or
 get imported by, `corroborly.engine.external_search` (the existing
-Scopus-based provider) or any CLI/router code, so it cannot regress
-existing behavior. Nothing outside this file references it yet.
+Scopus-based provider, which has its own heavier candidate-register
+pipeline) or any CLI/router code beyond the `search scholar` CLI command,
+so it cannot regress Scopus's separate behavior.
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 
 from corroborly.engine.ai import load_dotenv_values
 
@@ -37,6 +46,10 @@ logger = logging.getLogger(__name__)
 SERPAPI_URL = "https://serpapi.com/search"
 SEMANTIC_SCHOLAR_SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 SEMANTIC_SCHOLAR_FIELDS = "title,authors,year,citationCount,abstract,venue,url"
+OPENALEX_WORKS_URL = "https://api.openalex.org/works"
+CROSSREF_WORKS_URL = "https://api.crossref.org/works"
+ARXIV_API_URL = "http://export.arxiv.org/api/query"
+ARXIV_ATOM_NS = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
 
 Opener = Callable[[Request], Any]
 
@@ -60,6 +73,7 @@ class ScholarResult:
     abstract: str | None
     venue: str | None
     source_provider: str
+    doi: str | None = None
 
 
 @dataclass(frozen=True)
@@ -307,6 +321,224 @@ def _fetch_scholarapi_net(
 
 
 # --------------------------------------------------------------------------
+# Option 5: OpenAlex Works API (free, no key required)
+# --------------------------------------------------------------------------
+
+
+def _reconstruct_openalex_abstract(inverted_index: Any) -> str | None:
+    """OpenAlex ships abstracts as {word: [position, ...]} instead of plain
+    text (a licensing workaround). Rebuild the original word order from it."""
+    if not isinstance(inverted_index, dict) or not inverted_index:
+        return None
+    positions: dict[int, str] = {}
+    for word, idxs in inverted_index.items():
+        if not isinstance(idxs, list):
+            continue
+        for idx in idxs:
+            if isinstance(idx, int):
+                positions[idx] = str(word)
+    if not positions:
+        return None
+    return " ".join(positions[i] for i in sorted(positions))
+
+
+def _fetch_openalex(
+    query: str,
+    max_results: int,
+    *,
+    workspace: Path | None,
+    opener: Opener | None,
+) -> list[ScholarResult]:
+    params: dict[str, Any] = {"search": query, "per_page": max_results}
+    mailto = _env_value("OPENALEX_MAILTO", workspace=workspace)
+    if mailto:
+        params["mailto"] = mailto
+
+    request = Request(f"{OPENALEX_WORKS_URL}?{urlencode(params)}", headers={"Accept": "application/json"}, method="GET")
+    data = _http_get_json(request, opener=opener, provider_label="OpenAlex")
+
+    entries = data.get("results") if isinstance(data, dict) else None
+    entries = entries if isinstance(entries, list) else []
+
+    results = []
+    for entry in entries[:max_results]:
+        if not isinstance(entry, dict):
+            continue
+        authorships = entry.get("authorships") if isinstance(entry.get("authorships"), list) else []
+        authors = []
+        for authorship in authorships:
+            if not isinstance(authorship, dict):
+                continue
+            author = authorship.get("author") if isinstance(authorship.get("author"), dict) else {}
+            if author.get("display_name"):
+                authors.append(str(author["display_name"]))
+        primary_location = entry.get("primary_location") if isinstance(entry.get("primary_location"), dict) else {}
+        source = primary_location.get("source") if isinstance(primary_location.get("source"), dict) else {}
+        doi = entry.get("doi")
+        results.append(
+            ScholarResult(
+                title=str(entry.get("title") or entry.get("display_name") or "Untitled"),
+                authors=authors,
+                year=_safe_int_or_none(entry.get("publication_year")),
+                citation_count=_safe_int_or_none(entry.get("cited_by_count")),
+                url=primary_location.get("landing_page_url") or entry.get("id"),
+                abstract=_reconstruct_openalex_abstract(entry.get("abstract_inverted_index")),
+                venue=source.get("display_name") or None,
+                source_provider="openalex",
+                doi=str(doi) if doi else None,
+            )
+        )
+    return results
+
+
+# --------------------------------------------------------------------------
+# Option 6: Crossref Works API (free, no key required, strong DOI metadata)
+# --------------------------------------------------------------------------
+
+_JATS_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _fetch_crossref(
+    query: str,
+    max_results: int,
+    *,
+    workspace: Path | None,
+    opener: Opener | None,
+) -> list[ScholarResult]:
+    params: dict[str, Any] = {"query": query, "rows": max_results}
+    mailto = _env_value("CROSSREF_MAILTO", workspace=workspace)
+    if mailto:
+        params["mailto"] = mailto
+
+    request = Request(f"{CROSSREF_WORKS_URL}?{urlencode(params)}", headers={"Accept": "application/json"}, method="GET")
+    data = _http_get_json(request, opener=opener, provider_label="Crossref")
+
+    message = data.get("message") if isinstance(data, dict) else None
+    items = message.get("items") if isinstance(message, dict) else None
+    items = items if isinstance(items, list) else []
+
+    results = []
+    for item in items[:max_results]:
+        if not isinstance(item, dict):
+            continue
+        titles = item.get("title") if isinstance(item.get("title"), list) else []
+        author_entries = item.get("author") if isinstance(item.get("author"), list) else []
+        authors = [
+            " ".join(part for part in (author.get("given"), author.get("family")) if part)
+            for author in author_entries
+            if isinstance(author, dict) and (author.get("given") or author.get("family"))
+        ]
+        year = None
+        for date_key in ("published", "published-print", "published-online", "issued"):
+            date_field = item.get(date_key) if isinstance(item.get(date_key), dict) else {}
+            date_parts_list = date_field.get("date-parts") if isinstance(date_field.get("date-parts"), list) else []
+            first_parts = date_parts_list[0] if date_parts_list else []
+            if first_parts:
+                year = _safe_int_or_none(first_parts[0])
+                break
+        container_titles = item.get("container-title") if isinstance(item.get("container-title"), list) else []
+        abstract = item.get("abstract")
+        if isinstance(abstract, str) and abstract.strip():
+            abstract = _JATS_TAG_RE.sub("", abstract).strip()
+        else:
+            abstract = None
+        results.append(
+            ScholarResult(
+                title=str(titles[0]) if titles else "Untitled",
+                authors=authors,
+                year=year,
+                citation_count=_safe_int_or_none(item.get("is-referenced-by-count")),
+                url=item.get("URL"),
+                abstract=abstract,
+                venue=str(container_titles[0]) if container_titles else None,
+                source_provider="crossref",
+                doi=str(item["DOI"]) if item.get("DOI") else None,
+            )
+        )
+    return results
+
+
+# --------------------------------------------------------------------------
+# Option 7: arXiv API (free, no key required, preprints, Atom/XML response)
+# --------------------------------------------------------------------------
+
+
+def _fetch_arxiv(
+    query: str,
+    max_results: int,
+    *,
+    workspace: Path | None,
+    opener: Opener | None,
+) -> list[ScholarResult]:
+    params = {"search_query": f"all:{query}", "max_results": max_results}
+    request = Request(f"{ARXIV_API_URL}?{urlencode(params)}", headers={"Accept": "application/atom+xml"}, method="GET")
+
+    fetch = opener or urlopen
+    try:
+        with fetch(request) as response:
+            raw = response.read()
+    except HTTPError as exc:
+        raise ScholarProviderError(f"arXiv request failed with HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise ScholarProviderError(f"arXiv request failed: {exc.reason}") from exc
+
+    try:
+        root = ElementTree.fromstring(raw)
+    except ElementTree.ParseError as exc:
+        raise ScholarProviderError("arXiv returned invalid XML") from exc
+
+    entries = root.findall("atom:entry", ARXIV_ATOM_NS)
+
+    # arXiv returns HTTP 200 even on query errors, embedding a single
+    # synthetic entry whose id starts with the errors namespace instead of
+    # a real arxiv.org/abs/... URL.
+    if len(entries) == 1:
+        id_el = entries[0].find("atom:id", ARXIV_ATOM_NS)
+        if id_el is not None and id_el.text and "api/errors" in id_el.text:
+            title_el = entries[0].find("atom:title", ARXIV_ATOM_NS)
+            detail = title_el.text.strip() if title_el is not None and title_el.text else "unknown error"
+            raise ScholarProviderError(f"arXiv API error: {detail}")
+
+    results = []
+    for entry in entries[:max_results]:
+        title_el = entry.find("atom:title", ARXIV_ATOM_NS)
+        title = " ".join((title_el.text or "").split()) if title_el is not None and title_el.text else "Untitled"
+
+        authors = []
+        for author_el in entry.findall("atom:author", ARXIV_ATOM_NS):
+            name_el = author_el.find("atom:name", ARXIV_ATOM_NS)
+            if name_el is not None and name_el.text:
+                authors.append(name_el.text.strip())
+
+        published_el = entry.find("atom:published", ARXIV_ATOM_NS)
+        year = _extract_year(published_el.text) if published_el is not None and published_el.text else None
+
+        summary_el = entry.find("atom:summary", ARXIV_ATOM_NS)
+        abstract = " ".join((summary_el.text or "").split()) if summary_el is not None and summary_el.text else None
+
+        id_el = entry.find("atom:id", ARXIV_ATOM_NS)
+        url = id_el.text.strip() if id_el is not None and id_el.text else None
+
+        doi_el = entry.find("arxiv:doi", ARXIV_ATOM_NS)
+        doi = doi_el.text.strip() if doi_el is not None and doi_el.text else None
+
+        results.append(
+            ScholarResult(
+                title=title,
+                authors=authors,
+                year=year,
+                citation_count=None,
+                url=url,
+                abstract=abstract or None,
+                venue="arXiv",
+                source_provider="arxiv",
+                doi=doi,
+            )
+        )
+    return results
+
+
+# --------------------------------------------------------------------------
 # Unified interface
 # --------------------------------------------------------------------------
 
@@ -317,6 +549,9 @@ _PROVIDER_PIPELINE: list[tuple[str, _ProviderFn]] = [
     ("semantic_scholar", _fetch_semantic_scholar),
     ("scholarly", _fetch_scholarly),
     ("scholarapi_net", _fetch_scholarapi_net),
+    ("openalex", _fetch_openalex),
+    ("crossref", _fetch_crossref),
+    ("arxiv", _fetch_arxiv),
 ]
 
 

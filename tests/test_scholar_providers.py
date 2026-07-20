@@ -9,6 +9,9 @@ import pytest
 from corroborly.engine.scholar_providers import (
     ScholarDataService,
     ScholarProviderError,
+    _fetch_arxiv,
+    _fetch_crossref,
+    _fetch_openalex,
     _fetch_scholarapi_net,
     _fetch_scholarly,
     _fetch_semantic_scholar,
@@ -40,6 +43,27 @@ def _opener(data: object):
 def _raising_opener(exc: Exception):
     def _open(_request: Request):
         raise exc
+
+    return _open
+
+
+class FakeXmlResponse:
+    def __init__(self, xml_text: str):
+        self.data = xml_text.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self) -> bytes:
+        return self.data
+
+
+def _xml_opener(xml_text: str):
+    def _open(_request: Request):
+        return FakeXmlResponse(xml_text)
 
     return _open
 
@@ -205,6 +229,161 @@ def test_scholarapi_net_is_a_stub_that_always_raises(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------------
+# Option 5: OpenAlex
+# --------------------------------------------------------------------------
+
+
+def test_openalex_parses_results_and_reconstructs_abstract(tmp_path):
+    data = {
+        "results": [
+            {
+                "title": "Container Terminal Digital Twins",
+                "publication_year": 2023,
+                "cited_by_count": 7,
+                "id": "https://openalex.org/W123",
+                "doi": "https://doi.org/10.1234/abc",
+                "authorships": [
+                    {"author": {"display_name": "F Author"}},
+                    {"author": {"display_name": "G Author"}},
+                ],
+                "primary_location": {
+                    "landing_page_url": "https://example.com/paper5",
+                    "source": {"display_name": "Journal of Smart Ports"},
+                },
+                "abstract_inverted_index": {"Digital": [0], "twins": [1], "for": [2], "ports": [3]},
+            }
+        ]
+    }
+    results = _fetch_openalex("digital twin ports", 5, workspace=tmp_path, opener=_opener(data))
+    assert len(results) == 1
+    result = results[0]
+    assert result.title == "Container Terminal Digital Twins"
+    assert result.authors == ["F Author", "G Author"]
+    assert result.year == 2023
+    assert result.citation_count == 7
+    assert result.url == "https://example.com/paper5"
+    assert result.venue == "Journal of Smart Ports"
+    assert result.abstract == "Digital twins for ports"
+    assert result.doi == "https://doi.org/10.1234/abc"
+    assert result.source_provider == "openalex"
+
+
+def test_openalex_returns_empty_list_on_missing_results_key(tmp_path):
+    assert _fetch_openalex("q", 5, workspace=tmp_path, opener=_opener({"not_results": []})) == []
+
+
+def test_openalex_raises_on_http_error(tmp_path):
+    exc = HTTPError("url", 500, "Server Error", None, None)
+    with pytest.raises(ScholarProviderError, match="HTTP 500"):
+        _fetch_openalex("q", 5, workspace=tmp_path, opener=_raising_opener(exc))
+
+
+# --------------------------------------------------------------------------
+# Option 6: Crossref
+# --------------------------------------------------------------------------
+
+
+def test_crossref_parses_items(tmp_path):
+    data = {
+        "message": {
+            "items": [
+                {
+                    "title": ["Predictive Container Flow Models"],
+                    "author": [{"given": "H", "family": "Author"}],
+                    "published": {"date-parts": [[2019, 6]]},
+                    "is-referenced-by-count": 15,
+                    "URL": "https://example.com/paper6",
+                    "container-title": ["Logistics Research Quarterly"],
+                    "abstract": "<jats:p>An abstract with tags.</jats:p>",
+                    "DOI": "10.5678/def",
+                }
+            ]
+        }
+    }
+    results = _fetch_crossref("container flow prediction", 5, workspace=tmp_path, opener=_opener(data))
+    assert len(results) == 1
+    result = results[0]
+    assert result.title == "Predictive Container Flow Models"
+    assert result.authors == ["H Author"]
+    assert result.year == 2019
+    assert result.citation_count == 15
+    assert result.venue == "Logistics Research Quarterly"
+    assert result.abstract == "An abstract with tags."
+    assert result.doi == "10.5678/def"
+    assert result.source_provider == "crossref"
+
+
+def test_crossref_returns_empty_list_on_missing_items_key(tmp_path):
+    assert _fetch_crossref("q", 5, workspace=tmp_path, opener=_opener({"message": {}})) == []
+
+
+def test_crossref_raises_on_url_error(tmp_path):
+    from urllib.error import URLError
+
+    exc = URLError("no network")
+    with pytest.raises(ScholarProviderError, match="Crossref request failed"):
+        _fetch_crossref("q", 5, workspace=tmp_path, opener=_raising_opener(exc))
+
+
+# --------------------------------------------------------------------------
+# Option 7: arXiv
+# --------------------------------------------------------------------------
+
+_ARXIV_FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2101.00001v1</id>
+    <title>Deep Learning for Container Terminal Scheduling</title>
+    <summary>We study scheduling with deep learning methods.</summary>
+    <published>2021-01-05T00:00:00Z</published>
+    <author><name>I Author</name></author>
+    <author><name>J Author</name></author>
+    <arxiv:doi>10.9999/xyz</arxiv:doi>
+  </entry>
+</feed>
+"""
+
+_ARXIV_ERROR_FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/api/errors#incorrect_id_format_for_test</id>
+    <title>Error</title>
+  </entry>
+</feed>
+"""
+
+
+def test_arxiv_parses_atom_feed(tmp_path):
+    results = _fetch_arxiv("container scheduling", 5, workspace=tmp_path, opener=_xml_opener(_ARXIV_FEED))
+    assert len(results) == 1
+    result = results[0]
+    assert result.title == "Deep Learning for Container Terminal Scheduling"
+    assert result.authors == ["I Author", "J Author"]
+    assert result.year == 2021
+    assert result.citation_count is None
+    assert result.url == "http://arxiv.org/abs/2101.00001v1"
+    assert result.venue == "arXiv"
+    assert result.doi == "10.9999/xyz"
+    assert result.source_provider == "arxiv"
+
+
+def test_arxiv_raises_on_error_feed(tmp_path):
+    with pytest.raises(ScholarProviderError, match="arXiv API error"):
+        _fetch_arxiv("q", 5, workspace=tmp_path, opener=_xml_opener(_ARXIV_ERROR_FEED))
+
+
+def test_arxiv_raises_on_http_error(tmp_path):
+    exc = HTTPError("url", 503, "Service Unavailable", None, None)
+    with pytest.raises(ScholarProviderError, match="HTTP 503"):
+        _fetch_arxiv("q", 5, workspace=tmp_path, opener=_raising_opener(exc))
+
+
+def test_arxiv_raises_on_invalid_xml(tmp_path):
+    with pytest.raises(ScholarProviderError, match="invalid XML"):
+        _fetch_arxiv("q", 5, workspace=tmp_path, opener=_xml_opener("not xml"))
+
+
+# --------------------------------------------------------------------------
 # Unified pipeline (ScholarDataService)
 # --------------------------------------------------------------------------
 
@@ -266,7 +445,7 @@ def test_service_reports_failure_when_every_option_fails(monkeypatch, tmp_path):
     assert response.succeeded is False
     assert response.provider_used is None
     assert response.results == []
-    assert len(response.attempts) == 4
+    assert len(response.attempts) == 7
     assert all(attempt.status == "error" for attempt in response.attempts)
 
 
