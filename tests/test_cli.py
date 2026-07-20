@@ -1063,6 +1063,121 @@ def test_cli_search_scholar_reports_failure_without_crashing_when_all_providers_
     assert snapshot["provider_used"] is None
 
 
+def test_cli_institutional_login_requires_opt_in_flag(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    result = runner.invoke(app, ["institutional", "login", "--workspace", str(workspace), "--quiet"])
+
+    assert result.exit_code == 2, result.output
+
+
+def test_cli_institutional_fetch_requires_opt_in_flag(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    result = runner.invoke(
+        app, ["institutional", "fetch", "https://example.com/paper", "--workspace", str(workspace), "--quiet"]
+    )
+
+    assert result.exit_code == 2, result.output
+
+
+def test_cli_institutional_login_calls_engine_with_opt_in(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    captured = {}
+
+    def fake_ensure_login(ws, *, signin_url):
+        captured["workspace"] = ws
+        captured["signin_url"] = signin_url
+
+    monkeypatch.setattr(cli, "ensure_institutional_login", fake_ensure_login)
+
+    result = runner.invoke(
+        app, ["institutional", "login", "--workspace", str(workspace), "--institutional-access", "--quiet"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == workspace
+    assert "openathens" in captured["signin_url"].lower()
+
+
+def test_cli_institutional_fetch_writes_result_on_success(tmp_path: Path, monkeypatch) -> None:
+    from corroborly.engine.institutional_access import FullTextResult
+
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    captured = {}
+
+    def fake_fetch_full_text(url, ws, *, headless=True):
+        captured["url"] = url
+        captured["headless"] = headless
+        return FullTextResult(
+            status="downloaded",
+            target_url=url,
+            resolved_url=url,
+            local_path=str(ws / "outputs" / "full-text" / "paper.pdf"),
+            message="Downloaded via selector 'a[href$=\".pdf\"]'.",
+        )
+
+    monkeypatch.setattr(cli, "fetch_full_text", fake_fetch_full_text)
+
+    result = runner.invoke(
+        app,
+        [
+            "institutional",
+            "fetch",
+            "https://example.com/paper",
+            "--workspace",
+            str(workspace),
+            "--institutional-access",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["url"] == "https://example.com/paper"
+    assert captured["headless"] is True
+    snapshot = read_yaml(workspace / "outputs" / "validation" / "institutional-fetch-result.yaml")
+    assert snapshot["status"] == "downloaded"
+
+
+def test_cli_institutional_fetch_reports_not_accessible_without_crashing(tmp_path: Path, monkeypatch) -> None:
+    from corroborly.engine.institutional_access import FullTextResult
+
+    workspace = tmp_path / "workspace"
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+
+    def fake_fetch_full_text(url, ws, *, headless=True):
+        return FullTextResult(
+            status="not_accessible",
+            target_url=url,
+            resolved_url=url,
+            local_path=None,
+            message="Could not auto-download: no downloadable PDF link was found on the page.",
+        )
+
+    monkeypatch.setattr(cli, "fetch_full_text", fake_fetch_full_text)
+
+    result = runner.invoke(
+        app,
+        [
+            "institutional",
+            "fetch",
+            "https://example.com/paper",
+            "--workspace",
+            str(workspace),
+            "--institutional-access",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    snapshot = read_yaml(workspace / "outputs" / "validation" / "institutional-fetch-result.yaml")
+    assert snapshot["status"] == "not_accessible"
+
+
 def test_cli_export_corpus_writes_combined_accepted_text(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

@@ -181,6 +181,12 @@ from corroborly.engine.research_stages import (
     set_stage_target_date,
     write_stages_ics,
 )
+from corroborly.engine.institutional_access import (
+    InstitutionalAccessError,
+    ensure_institutional_login,
+    fetch_full_text,
+    require_institutional_access_flag,
+)
 from corroborly.engine.report_schemas import export_report_schemas
 from corroborly.engine.reports import generate_workspace_report
 from corroborly.engine.scholar_providers import ScholarDataService
@@ -280,6 +286,7 @@ paper_app = typer.Typer(help="Deterministic paper-draft skeleton commands.")
 transcribe_app = typer.Typer(help="Audio/video transcription via SourceScribe (subprocess).")
 stages_app = typer.Typer(help="Research stage status, target dates, and calendar export commands.")
 templates_app = typer.Typer(help="Reusable workspace template commands (project setup + guidelines, for `init --template`).")
+institutional_app = typer.Typer(help="Explicit opt-in institutional (university SSO) full-text access commands.")
 
 app.add_typer(sources_app, name="sources")
 app.add_typer(config_app, name="config")
@@ -305,6 +312,7 @@ app.add_typer(paper_app, name="paper")
 app.add_typer(transcribe_app, name="transcribe")
 app.add_typer(stages_app, name="stages")
 app.add_typer(templates_app, name="templates")
+app.add_typer(institutional_app, name="institutional")
 
 console = Console()
 DEFAULT_WORKSPACES_DIR = "workspaces"
@@ -2208,6 +2216,82 @@ def search_scholar(
             color = "green" if attempt.status == "ok" else "red"
             console.print(f"  [{color}]{attempt.provider}: {attempt.status}[/{color}] - {attempt.detail}")
         console.print(f"[green]Wrote[/green] {snapshot_path}")
+
+
+@institutional_app.command("login")
+def institutional_login(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    institutional_access: bool = typer.Option(
+        False, "--institutional-access", help="Required explicit opt-in: opens a real browser window to sign in."
+    ),
+    signin_url: str = typer.Option(
+        "https://www.library.qut.edu.au/search/getstarted/web/openathens/",
+        "--signin-url",
+        help="Institution sign-in page to open (default: QUT Library OpenAthens sign-in).",
+    ),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Open a real browser window to sign in once via your institution's SSO (password + MFA).
+    The session is saved to a local, gitignored browser profile and reused headlessly by
+    `institutional fetch`. This cannot be scripted end-to-end -- MFA needs you."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["institutional", "login"], ws, log_level)
+    try:
+        require_institutional_access_flag(institutional_access)
+        ensure_institutional_login(ws, signin_url=signin_url)
+    except InstitutionalAccessError as e:
+        logger.error("Institutional login failed", operation="institutional_login", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    logger.info("Institutional login session saved", operation="institutional_login")
+    _finish(summary, summary_path)
+    if not quiet:
+        console.print("[green]Session saved.[/green] `corroborly institutional fetch <url>` will now reuse it.")
+
+
+@institutional_app.command("fetch")
+def institutional_fetch(
+    url: str = typer.Argument(..., help="Target article/resource URL (or DOI URL) to fetch full text for."),
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace path (default: CWD)"),
+    institutional_access: bool = typer.Option(
+        False, "--institutional-access", help="Required explicit opt-in for live browser automation."
+    ),
+    headless: bool = typer.Option(True, "--headless/--headed", help="Run the browser headless (default) or visibly."),
+    log_level: str = typer.Option("info", "--log-level", help="debug|info|warning|error"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console output (still logs/run summary)."),
+):
+    """Try to auto-download full text for URL using the saved institutional session
+    (`institutional login` must have been run first). Best-effort: if no PDF link can be
+    found or the page is paywalled, writes a `not_accessible` result naming a manual fallback
+    instead of failing silently."""
+    ws = _resolve_workspace(workspace)
+    _slug, logger, summary, summary_path, _log_path = _run_ctx(["institutional", "fetch"], ws, log_level)
+    try:
+        require_institutional_access_flag(institutional_access)
+        result = fetch_full_text(url, ws, headless=headless)
+    except InstitutionalAccessError as e:
+        logger.error("Institutional fetch failed", operation="institutional_fetch", error=str(e))
+        summary.errors += 1
+        _finish(summary, summary_path)
+        if not quiet:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    output_path = ws / "outputs" / "validation" / "institutional-fetch-result.yaml"
+    write_yaml(output_path, {"version": 1, **result.as_dict()})
+    if result.status != "downloaded":
+        summary.errors += 1
+    logger.info("Ran institutional fetch", operation="institutional_fetch", status=result.status)
+    _finish(summary, summary_path)
+    if not quiet:
+        if result.status == "downloaded":
+            console.print(f"[green]Downloaded[/green] {result.local_path}")
+        else:
+            console.print(f"[yellow]{result.status}[/yellow]: {result.message}")
+        console.print(f"[green]Wrote[/green] {output_path}")
 
 
 @app.command("assess-novelty")

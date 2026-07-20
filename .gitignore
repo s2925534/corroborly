@@ -42,3 +42,8 @@ docs/DEPLOY.personal.md
 
 # Email correspondence log — contains live API keys/tokens (e.g. Elsevier).
 /EMAILS_REPORT.md
+
+# Persistent Playwright browser profile holding a live institutional SSO
+# session (cookies/local storage) — see corroborly.engine.institutional_access.
+# Never commit: this is equivalent to a live logged-in session, workspace-relative.
+**/data/openathens-profile/

@@ -46,6 +46,13 @@ mariadb = [
 scholar = [
   "scholarly>=1.7.0",
 ]
+# Optional institutional (university SSO) full-text access via a real
+# browser session -- see corroborly.engine.institutional_access. Only
+# imported lazily inside that module. After installing, also run
+# `playwright install chromium` once to download the browser binary.
+institutional = [
+  "playwright>=1.40.0",
+]
 
 [project.scripts]
 corroborly = "corroborly.cli:app"
