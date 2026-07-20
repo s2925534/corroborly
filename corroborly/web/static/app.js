@@ -706,7 +706,11 @@ const AI_ACTION_ROUTES = {
   "abstract-screening": "/api/v1/ai/abstract-screening",
   novelty: "/api/v1/ai/novelty",
   "rqs-assess": "/api/v1/ai/rqs/assess",
+  "search-ai-query-plan": "/api/v1/search/ai-query-plan",
+  "search-ai-candidate-review": "/api/v1/search/ai-candidate-review",
 };
+
+const EXTERNAL_SEARCH_AI_ACTIONS = new Set(["search-ai-query-plan", "search-ai-candidate-review"]);
 
 async function checkAiReadiness() {
   const messageEl = document.getElementById("ai-readiness-message");
@@ -741,6 +745,12 @@ async function runAiAction() {
   let route = AI_ACTION_ROUTES[action];
   const body = { ai: true };
   if (action === "rqs-assess" && rqId) body.rq_id = rqId;
+  if (EXTERNAL_SEARCH_AI_ACTIONS.has(action)) {
+    body.external_search = true;
+    if (action === "search-ai-candidate-review") {
+      body.full_source_document_ai = document.getElementById("ai-search-full-text-checkbox").checked;
+    }
+  }
   if (action === "review-document") {
     const target = document.getElementById("ai-review-target-input").value.trim();
     if (!target) {
@@ -816,6 +826,151 @@ async function refreshAiUsageLog() {
     emptyEl.hidden = false;
     emptyEl.textContent = err.message;
   }
+}
+
+// --- external search & abstract screening (Phase 23) ---
+
+state.searchSelectedCandidateIds = new Set();
+
+async function generateSearchPlan() {
+  const messageEl = document.getElementById("search-plan-message");
+  const resultEl = document.getElementById("search-plan-result");
+  const maxQueries = parseInt(document.getElementById("search-plan-max-queries-input").value, 10) || 20;
+  const strategy = document.getElementById("search-plan-strategy-select").value;
+  const unusedOnly = document.getElementById("search-plan-unused-only-checkbox").checked;
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Generating...";
+  resultEl.innerHTML = "";
+  try {
+    const plan = await api("POST", "/api/v1/search/plan", {
+      json: { max_queries: maxQueries, strategy, unused_only: unusedOnly },
+    });
+    messageEl.textContent =
+      `${plan.queries.length} query(ies) planned (${plan.generated_query_count} generated, ` +
+      `${plan.imported_query_count} from a legacy params file). Nothing was sent to Scopus — ` +
+      "run ‘corroborly search run’ against this plan to actually execute it.";
+    resultEl.innerHTML = `<pre class="code-block"></pre>`;
+    resultEl.querySelector("pre").textContent = plan.queries.join("\n");
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function refreshSearchReports() {
+  const messageEl = document.getElementById("search-reports-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  messageEl.textContent = "Refreshing...";
+  try {
+    const reports = await api("GET", "/api/v1/search/reports");
+    messageEl.hidden = true;
+    renderSearchCandidatesTable(reports.high_signal.candidates || []);
+    renderSearchOtherReports(reports);
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function renderSearchCandidatesTable(candidates) {
+  const table = document.getElementById("search-candidates-table");
+  const tbody = document.getElementById("search-candidates-tbody");
+  const emptyEl = document.getElementById("search-candidates-empty");
+  state.searchSelectedCandidateIds.clear();
+  updateSearchImportButtonState();
+  tbody.innerHTML = "";
+  table.hidden = candidates.length === 0;
+  emptyEl.hidden = candidates.length > 0;
+  for (const candidate of candidates) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><input type="checkbox" data-candidate-id="${escapeHtml(candidate.candidate_id || "")}"></td>
+      <td>${escapeHtml(candidate.title || "")}</td>
+      <td>${candidate.year || ""}</td>
+      <td>${candidate.quality_score}</td>
+      <td>${candidate.open_access ? "yes" : "no"}</td>
+      <td>${(candidate.linked_research_questions || []).length}</td>
+    `;
+    row.querySelector("input[type=checkbox]").addEventListener("change", (event) => {
+      const id = event.target.dataset.candidateId;
+      if (event.target.checked) {
+        state.searchSelectedCandidateIds.add(id);
+      } else {
+        state.searchSelectedCandidateIds.delete(id);
+      }
+      updateSearchImportButtonState();
+    });
+    tbody.appendChild(row);
+  }
+}
+
+function renderSearchOtherReports(reports) {
+  const el = document.getElementById("search-other-reports");
+  const duplicateCount = (reports.duplicates.duplicate_groups || []).length;
+  const zoteroMatchCount = (reports.zotero_matches.matches || []).length;
+  const evidenceGapCount = (reports.evidence.candidates || []).filter((row) => row.needs_review).length;
+  const comparisonRunCount = (reports.comparison.runs || []).length;
+  el.innerHTML = `
+    <p>Duplicate candidate groups: ${duplicateCount}</p>
+    <p>Zotero library matches: ${zoteroMatchCount}</p>
+    <p>Candidates without supporting evidence: ${evidenceGapCount}</p>
+    <p>Recorded search runs compared: ${comparisonRunCount}</p>
+  `;
+}
+
+function updateSearchImportButtonState() {
+  document.getElementById("search-import-candidates-btn").disabled = state.searchSelectedCandidateIds.size === 0;
+}
+
+async function importSelectedSearchCandidates() {
+  const messageEl = document.getElementById("search-import-message");
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  const candidateIds = Array.from(state.searchSelectedCandidateIds);
+  if (candidateIds.length === 0) {
+    messageEl.textContent = "Select at least one candidate first.";
+    messageEl.classList.add("error");
+    return;
+  }
+  messageEl.textContent = "Importing...";
+  try {
+    const report = await api("POST", "/api/v1/search/import-candidates", { json: { candidate_ids: candidateIds } });
+    messageEl.textContent = `Imported ${report.imported_count ?? candidateIds.length} candidate(s) as pending-review sources.`;
+    await refreshSearchReports();
+    refreshSources();
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+async function importAbstractsFolder() {
+  const messageEl = document.getElementById("abstracts-import-message");
+  const folder = document.getElementById("abstracts-import-folder-input").value.trim();
+  messageEl.hidden = false;
+  messageEl.className = "small";
+  if (!folder) {
+    messageEl.textContent = "Provide a folder path.";
+    messageEl.classList.add("error");
+    return;
+  }
+  messageEl.textContent = "Importing...";
+  try {
+    const result = await api("POST", "/api/v1/abstracts/import", { json: { folder } });
+    messageEl.textContent = `Processed ${result.processed}, ${result.candidate} candidate(s), ${result.filtered} filtered, ${result.skipped} skipped.`;
+  } catch (err) {
+    messageEl.textContent = err.message;
+    messageEl.classList.add("error");
+  }
+}
+
+function setupExternalSearchPanel() {
+  document.getElementById("search-plan-btn").addEventListener("click", generateSearchPlan);
+  document.getElementById("search-reports-refresh-btn").addEventListener("click", refreshSearchReports);
+  document.getElementById("search-import-candidates-btn").addEventListener("click", importSelectedSearchCandidates);
+  document.getElementById("abstracts-import-btn").addEventListener("click", importAbstractsFolder);
 }
 
 // --- sources ---
@@ -3433,6 +3588,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupKeyboardShortcuts();
   setupZoteroPanel();
   setupSourcesPanel();
+  setupExternalSearchPanel();
   setupCreateWorkspacePanel();
   setupNotesPanel();
   setupTranscribePanel();
@@ -3480,6 +3636,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("ai-usage-log-refresh-btn").addEventListener("click", refreshAiUsageLog);
   document.getElementById("ai-action-select").addEventListener("change", (event) => {
     document.getElementById("ai-review-document-fields").hidden = event.target.value !== "review-document";
+    document.getElementById("ai-search-candidate-review-fields").hidden = event.target.value !== "search-ai-candidate-review";
+    document.getElementById("ai-search-opt-in-note").hidden = !EXTERNAL_SEARCH_AI_ACTIONS.has(event.target.value);
   });
   document.getElementById("corpus-search-btn").addEventListener("click", searchCorpus);
   document.getElementById("corpus-search-input").addEventListener("keydown", (event) => {

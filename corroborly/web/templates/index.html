@@ -128,6 +128,8 @@
         <option value="novelty">Novelty assessment</option>
         <option value="rqs-assess">Research question assessment</option>
         <option value="review-document">Review a working document</option>
+        <option value="search-ai-query-plan">External search: AI query plan</option>
+        <option value="search-ai-candidate-review">External search: AI candidate review</option>
       </select>
       <label class="field-label" for="ai-rq-id-input">Research question ID (only used for RQ assessment; leave blank for all)</label>
       <input id="ai-rq-id-input" type="text" placeholder="e.g. rq-001">
@@ -145,6 +147,13 @@
         </label>
         <p class="muted small">Document review sends the whole target document's text, not just bounded excerpts.</p>
       </div>
+      <div id="ai-search-candidate-review-fields" hidden>
+        <label class="field-label">
+          <input id="ai-search-full-text-checkbox" type="checkbox"> Also send full candidate source documents (separate, explicit opt-in)
+        </label>
+        <p class="muted small">Off by default: candidate review uses metadata and abstracts only. Checking this additionally sends full candidate source text where available.</p>
+      </div>
+      <p class="muted small" id="ai-search-opt-in-note" hidden>These two actions also require the external-search opt-in — sent automatically alongside the AI consent checkbox below, mirroring the CLI's <code>--ai --external-search</code> double flag. No Scopus request is made; this only reads candidates already fetched locally via <code>corroborly search run</code>.</p>
       <label class="field-label">
         <input id="ai-opt-in-checkbox" type="checkbox"> I explicitly consent to sending bounded source excerpts to OpenAI for this action
       </label>
@@ -168,6 +177,69 @@
         <tbody id="ai-usage-log-tbody"></tbody>
       </table>
       <p id="ai-usage-log-empty" class="muted small" hidden>No AI calls recorded yet.</p>
+    </details>
+  </section>
+
+  <section id="panel-external-search" class="panel">
+    <h2>External search &amp; abstract screening</h2>
+    <p class="muted small">Deterministic query planning and candidate triage over Scopus results already fetched via the CLI (<code>corroborly search run</code> runs the actual external search — this panel never calls Scopus itself). AI-assisted query suggestions and candidate relevance/novelty review use the same double opt-in (<code>ai</code> + <code>external_search</code>) as every other AI action; run them from the "AI-assisted features" panel above using the "External search: AI query plan" / "External search: AI candidate review" actions.</p>
+
+    <details class="detail-box">
+      <summary class="link">Generate a query plan (deterministic)</summary>
+      <div class="source-scan-form">
+        <label class="field-label" for="search-plan-max-queries-input">Max queries</label>
+        <input id="search-plan-max-queries-input" type="number" value="20" min="1">
+        <label class="field-label" for="search-plan-strategy-select">Strategy</label>
+        <select id="search-plan-strategy-select">
+          <option value="balanced">Balanced</option>
+          <option value="broad">Broad</option>
+          <option value="narrow">Narrow</option>
+        </select>
+        <label class="field-label">
+          <input id="search-plan-unused-only-checkbox" type="checkbox"> Only queries not already used
+        </label>
+        <div class="zotero-link-actions">
+          <button id="search-plan-btn" type="button">Generate plan</button>
+        </div>
+        <p id="search-plan-message" class="small" hidden></p>
+        <div id="search-plan-result"></div>
+      </div>
+    </details>
+
+    <div class="zotero-link-actions">
+      <button id="search-reports-refresh-btn" type="button" class="secondary">Refresh candidate reports</button>
+    </div>
+    <p id="search-reports-message" class="small" hidden></p>
+
+    <table id="search-candidates-table" class="data-table" hidden>
+      <thead>
+        <tr><th></th><th>Title</th><th>Year</th><th>Quality</th><th>Open access</th><th>Linked RQs</th></tr>
+      </thead>
+      <tbody id="search-candidates-tbody"></tbody>
+    </table>
+    <p id="search-candidates-empty" class="muted small" hidden>No high-signal candidates yet — run <code>corroborly search run</code> against a generated plan first, then refresh.</p>
+
+    <div class="zotero-link-actions">
+      <button id="search-import-candidates-btn" type="button" disabled>Import selected as sources</button>
+    </div>
+    <p id="search-import-message" class="small" hidden></p>
+
+    <details class="detail-box">
+      <summary class="link">Other candidate reports (duplicates, Zotero matches, evidence, run comparison)</summary>
+      <div id="search-other-reports" class="small"></div>
+    </details>
+
+    <details class="detail-box">
+      <summary class="link">Import legacy abstract files</summary>
+      <p class="muted small">Imports plain-text abstract files from a local folder into a reviewable candidate register (<code>corroborly abstracts import</code>'s web equivalent). Screening those candidates with AI is the "Abstract screening" action in the AI-assisted features panel above.</p>
+      <div class="source-scan-form">
+        <label class="field-label" for="abstracts-import-folder-input">Folder path</label>
+        <input id="abstracts-import-folder-input" type="text" placeholder="/path/to/abstracts/folder">
+        <div class="zotero-link-actions">
+          <button id="abstracts-import-btn" type="button">Import</button>
+        </div>
+        <p id="abstracts-import-message" class="small" hidden></p>
+      </div>
     </details>
   </section>
 

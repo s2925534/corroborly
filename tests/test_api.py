@@ -2584,6 +2584,71 @@ def test_ai_review_returns_grounded_result_with_mocked_openai(client: TestClient
     assert entries[0]["ai_used"] is True
 
 
+def test_ai_review_returns_clean_error_when_openai_call_fails(client: TestClient, tmp_path: Path, monkeypatch) -> None:
+    """Regression test: `_require_ai` only guards credential loading, not the
+    actual `ai_assisted_review` call -- a genuine network/provider failure at
+    call time used to propagate as an unhandled 500 instead of the
+    documented error envelope. Caught via a real live smoke test hitting a
+    real OpenAI request failure (a local TLS error), not assumed."""
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "paper.txt").write_text("bounded evidence text", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+    client.post(f"/api/v1/sources/{source_id}/status", params={"workspace": str(workspace)}, json={"new_status": "accepted"})
+    client.post("/api/v1/conversion/run", params={"workspace": str(workspace)}, json={})
+
+    import corroborly.engine.ai as ai_module
+    from urllib.error import URLError
+
+    def failing_urlopen(request):
+        raise URLError("simulated provider failure")
+
+    monkeypatch.setattr(ai_module, "urlopen", failing_urlopen)
+
+    response = client.post("/api/v1/ai/review", params={"workspace": str(workspace)}, json={"ai": True})
+
+    assert response.status_code == 502
+    assert response.json()["errors"][0]["code"] == "ai_call_failed"
+
+
+def test_search_ai_query_plan_returns_clean_error_when_openai_call_fails(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "paper.txt").write_text("bounded evidence text", encoding="utf-8")
+    init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    scan_sources(workspace, source_root)
+    source_id = read_yaml(workspace / "source-register.yaml")["sources"][0]["source_id"]
+    client.post(f"/api/v1/sources/{source_id}/status", params={"workspace": str(workspace)}, json={"new_status": "accepted"})
+    client.post("/api/v1/conversion/run", params={"workspace": str(workspace)}, json={})
+
+    import corroborly.engine.ai as ai_module
+    from urllib.error import URLError
+
+    def failing_urlopen(request):
+        raise URLError("simulated provider failure")
+
+    monkeypatch.setattr(ai_module, "urlopen", failing_urlopen)
+
+    response = client.post(
+        "/api/v1/search/ai-query-plan",
+        params={"workspace": str(workspace)},
+        json={"ai": True, "external_search": True},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["errors"][0]["code"] == "ai_call_failed"
+
+
 def test_ai_usage_log_route_empty_for_fresh_workspace(client: TestClient, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(workspace, project_name="Test", project_type="M.Phil", topic="Topic")

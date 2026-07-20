@@ -63,9 +63,12 @@ class AiReviewRequest(BaseModel):
 @router.post("/review")
 def ai_review(payload: AiReviewRequest, workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
     credentials = _require_ai(payload.ai, workspace)
-    report = ai_assisted_review(
-        workspace, credentials, max_sources=payload.max_sources, max_excerpt_chars=payload.max_excerpt_chars
-    )
+    try:
+        report = ai_assisted_review(
+            workspace, credentials, max_sources=payload.max_sources, max_excerpt_chars=payload.max_excerpt_chars
+        )
+    except OpenAiError as exc:
+        raise ApiError("ai_call_failed", str(exc), status_code=502) from exc
     return ok(report)
 
 
@@ -78,9 +81,12 @@ class AiNoveltyRequest(BaseModel):
 @router.post("/novelty")
 def ai_novelty(payload: AiNoveltyRequest, workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
     credentials = _require_ai(payload.ai, workspace)
-    report = ai_novelty_assessment(
-        workspace, credentials, max_sources=payload.max_sources, max_excerpt_chars=payload.max_excerpt_chars
-    )
+    try:
+        report = ai_novelty_assessment(
+            workspace, credentials, max_sources=payload.max_sources, max_excerpt_chars=payload.max_excerpt_chars
+        )
+    except OpenAiError as exc:
+        raise ApiError("ai_call_failed", str(exc), status_code=502) from exc
     return ok(report)
 
 
@@ -117,13 +123,16 @@ class AiWorkspaceReportRequest(BaseModel):
 def _workspace_report_route(kind: str):
     def route(payload: AiWorkspaceReportRequest, workspace: Path = Depends(resolve_workspace)) -> dict[str, Any]:
         credentials = _require_ai(payload.ai, workspace)
-        report = ai_workspace_report(
-            workspace,
-            credentials,
-            kind=kind,
-            max_sources=payload.max_sources,
-            max_excerpt_chars=payload.max_excerpt_chars,
-        )
+        try:
+            report = ai_workspace_report(
+                workspace,
+                credentials,
+                kind=kind,
+                max_sources=payload.max_sources,
+                max_excerpt_chars=payload.max_excerpt_chars,
+            )
+        except OpenAiError as exc:
+            raise ApiError("ai_call_failed", str(exc), status_code=502) from exc
         return ok(report)
 
     return route

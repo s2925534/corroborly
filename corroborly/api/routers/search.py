@@ -107,13 +107,16 @@ def search_ai_query_plan(payload: AiQueryPlanRequest, workspace: Path = Depends(
         credentials = openai_credentials(workspace)
     except OpenAiError as exc:
         raise ApiError("openai_not_configured", str(exc), status_code=503) from exc
-    report = ai_workspace_report(
-        workspace,
-        credentials,
-        kind="query_generation",
-        max_sources=payload.max_sources,
-        max_excerpt_chars=payload.max_excerpt_chars,
-    )
+    try:
+        report = ai_workspace_report(
+            workspace,
+            credentials,
+            kind="query_generation",
+            max_sources=payload.max_sources,
+            max_excerpt_chars=payload.max_excerpt_chars,
+        )
+    except OpenAiError as exc:
+        raise ApiError("ai_call_failed", str(exc), status_code=502) from exc
     return ok(report)
 
 
@@ -144,13 +147,16 @@ def search_ai_candidate_review(
         credentials = openai_credentials(workspace)
     except OpenAiError as exc:
         raise ApiError("openai_not_configured", str(exc), status_code=503) from exc
-    report = ai_workspace_report(
-        workspace,
-        credentials,
-        kind="candidate_validation",
-        max_sources=payload.max_sources,
-        max_excerpt_chars=payload.max_excerpt_chars,
-    )
+    try:
+        report = ai_workspace_report(
+            workspace,
+            credentials,
+            kind="candidate_validation",
+            max_sources=payload.max_sources,
+            max_excerpt_chars=payload.max_excerpt_chars,
+        )
+    except OpenAiError as exc:
+        raise ApiError("ai_call_failed", str(exc), status_code=502) from exc
     report["full_source_document_ai_opt_in"] = payload.full_source_document_ai
     report["full_text_mode"] = "explicit_opt_in" if payload.full_source_document_ai else "metadata_and_abstracts_only"
     return ok(report)
