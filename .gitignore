@@ -47,3 +47,6 @@ docs/DEPLOY.personal.md
 # session (cookies/local storage) — see corroborly.engine.institutional_access.
 # Never commit: this is equivalent to a live logged-in session, workspace-relative.
 **/data/openathens-profile/
+
+# Verbatim journal index: machine-local transcript paths, not portable
+/agent-context/journal-verbatim/
